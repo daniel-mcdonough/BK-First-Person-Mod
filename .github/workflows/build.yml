@@ -28,7 +28,7 @@ jobs:
         run: make
 
       - name: Package
-        run: zip -j BK_First_Person_Mode.zip build/bk_first_person_mode.nrm
+        run: zip -j BK_First_Person_Mode.zip build/bk_first_person_mode.nrm icon.png
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
