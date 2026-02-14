@@ -1,5 +1,5 @@
 BUILD_DIR := build
-NAME := bk_better_camera
+NAME := bk_first_person_mode
 
 # Allow the user to specify the compiler and linker on macOS
 # as Apple Clang does not support MIPS architecture
