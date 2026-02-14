@@ -1,0 +1,58 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Deps
+        run: sudo apt-get update && sudo apt-get install -y lld zip
+
+      - name: Download RecompModTool
+        run: |
+          curl -L -o RecompModTool https://github.com/N64Recomp/N64Recomp/releases/download/mod-tool-release/RecompModTool
+          chmod +x RecompModTool
+
+      - name: Build
+        run: make
+
+      - name: Package
+        run: zip -j BK_First_Person_Mode.zip build/bk_first_person_mode.nrm
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BK_First_Person_Mode
+          path: |
+            build/bk_first_person_mode.nrm
+            BK_First_Person_Mode.zip
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: BK_First_Person_Mode
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/bk_first_person_mode.nrm
+            BK_First_Person_Mode.zip
