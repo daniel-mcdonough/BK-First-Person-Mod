@@ -2,7 +2,7 @@
 id = "bk_first_person_mode"
 version = "0.1.0"
 display_name = "BK First Person Mode"
-description = "Adds first person. Press D-pad Up to enter/exit first-person view while retaining full movement control. Press D-pad Down to toggle head tracking mode. Thanks to ProxyBK for TransformAnywhere, which substantially decreased development time."
+description = "Adds first person. Press D-pad Up to enter/exit first-person view while retaining full movement control. Thanks to ProxyBK for TransformAnywhere, which substantially decreased development time."
 short_description = "First-person camera with free movement"
 authors = [ "derp" ]
 game_id = "bk"
@@ -24,3 +24,11 @@ description = "Strafe: camera direction is independent, player can strafe. Class
 type = "Enum"
 options = [ "Strafe", "Classic" ]
 default = "Strafe"
+
+[[manifest.config_options]]
+id = "head_tracking"
+name = "Head Tracking"
+description = "Off: static camera at eye level, player model hidden. On: camera follows animated head bone, player model visible."
+type = "Enum"
+options = [ "Off", "On" ]
+default = "Off"

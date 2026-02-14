@@ -5,14 +5,18 @@ A mod for Banjo-Kazooie Recompiled that adds a toggled first-person camera with 
 ## Features
 
 - **D-pad Up**: Toggle first-person mode on/off
-- **D-pad Down**: Toggle head tracking (camera follows animated head bone)
 - **C-buttons / Right stick**: Look around
 - **Left stick**: Full movement retained in first-person
 
 ### Camera Modes
 
 - **Strafe** (default): Camera direction is independent, player can strafe
-- **Classic**: Camera follows the player's facing direction
+- **Classic**: Camera follows the player's facing direction. This is very jerky and incredibly difficult to play with. 180 degree turns don't really work.
+
+### Head Tracking
+
+- **Off** (default): Static camera at eye level, player model hidden
+- **On**: Camera follows animated head bone with geometric pitch/roll, player model visible
 
 Configurable in the mod settings menu.
 

@@ -40,7 +40,6 @@ s32  bastick_getZone(void);
 /* ------------------------------------------------------------------ */
 
 #define BUTTON_D_UP    0x4
-#define BUTTON_D_DOWN  0x5
 #define BUTTON_C_LEFT  0xA
 #define BUTTON_C_DOWN  0xB
 #define BUTTON_C_UP    0xC
@@ -103,6 +102,12 @@ s32  bastick_getZone(void);
 #define FP_TROT_BOB_FREQ          360.0f   /* deg/sec  (50 bobs / 50 sec × 360)              */
 #define FP_TROT_BOB_AMP             2.0f   /* Y units                                         */
 
+/* Washing machine sway amplitudes */
+#define FP_WASHUP_WALK_FREQ      720.0f   /* deg/sec  (20 cycles / 10 sec × 360)             */
+#define FP_WASHUP_SWAY_HORIZ     10.0f   /* horizontal sway amplitude (walk + idle)          */
+#define FP_WASHUP_SWAY_VERT       7.0f   /* vertical arc amplitude (walk)                    */
+#define FP_WASHUP_IDLE_SWAY        5.0f   /* idle harmonic sway amplitude                     */
+
 /* Bee idle sway: asymmetric harmonic — sin(p) + 0.35*sin(3p) */
 #define FP_BEE_IDLE_FREQ         120.0f   /* deg/sec  (10 cycles / 30 sec × 360)             */
 #define FP_BEE_IDLE_SWAY           3.0f   /* horizontal sway amplitude                       */
@@ -113,13 +118,11 @@ s32  bastick_getZone(void);
 /* ------------------------------------------------------------------ */
 
 static s32 fp_active;
-static s32 fp_head_tracking;             /* 0 = static offset, 1 = bone */
 static f32 fp_yaw;
 static f32 fp_pitch;
 static s32 fp_last_map;
 static u32 fp_last_transformation;
 static s32 fp_prev_toggle_held;          /* for rising-edge detection    */
-static s32 fp_prev_ht_held;             /* for head-tracking toggle     */
 static f32 fp_smooth_y;                 /* smoothed eye Y position       */
 static f32 fp_smooth_roll;              /* smoothed roll angle           */
 static f32 fp_bob_phase;               /* synthetic bob sine phase (degrees) */
@@ -249,7 +252,7 @@ static void fp_enter(void) {
     fp_last_map = map_get();
     fp_last_transformation = player_getTransformation();
 
-    if (!fp_head_tracking)
+    if (!recomp_get_config_u32("head_tracking"))
         player_setModelVisible(0);
 }
 
@@ -280,13 +283,11 @@ static s32 fp_should_auto_exit(void) {
 
 RECOMP_CALLBACK("*", recomp_on_init) void on_init(void) {
     fp_active              = 0;
-    fp_head_tracking       = 0;
     fp_yaw                 = 0.0f;
     fp_pitch               = 0.0f;
     fp_last_map            = 0;
     fp_last_transformation = 0;
     fp_prev_toggle_held    = 0;
-    fp_prev_ht_held        = 0;
     fp_smooth_y            = 0.0f;
     fp_smooth_roll         = 0.0f;
     fp_bob_phase           = 0.0f;
@@ -324,21 +325,6 @@ RECOMP_HOOK("ncDynamicCamera_update") void before_camera_update(void) {
         }
     }
 
-    /* --- Head tracking toggle (rising edge of D-pad Down while in FP) --- */
-    if (fp_active) {
-        s32 ht_held = bakey_held(BUTTON_D_DOWN);
-        s32 ht_just_pressed = ht_held && !fp_prev_ht_held;
-        fp_prev_ht_held = ht_held;
-
-        if (ht_just_pressed) {
-            fp_head_tracking = !fp_head_tracking;
-            fp_smooth_y = 0.0f;             /* re-seed on toggle */
-            fp_smooth_roll = 0.0f;
-            player_setModelVisible(fp_head_tracking ? 1 : 0);
-        }
-    } else {
-        fp_prev_ht_held = 0;
-    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -349,9 +335,12 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     f32 eye_pos[3];
     f32 rotation[3];
     f32 dt;
+    s32 head_tracking;
 
     if (!fp_active)
         return;
+
+    head_tracking = (s32)recomp_get_config_u32("head_tracking");
 
     /* --- safety checks --- */
     if (fp_should_auto_exit()) {
@@ -392,7 +381,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     fp_pitch = fp_clamp(fp_pitch, FP_PITCH_MIN, FP_PITCH_MAX);
 
     /* --- model visibility (game re-enables it each frame) --- */
-    if (!fp_head_tracking)
+    if (!head_tracking)
         player_setModelVisible(0);
 
     /* --- align player to camera during egg states so eggs fire where you look --- */
@@ -405,7 +394,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     }
 
     /* --- compute eye position --- */
-    if (fp_head_tracking) {
+    if (head_tracking) {
         f32 alpha;
         s32 uses_synth_bob = 0;
         s32 uses_synth_sway = 0;
@@ -435,15 +424,16 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                 eye_pos[2] += ml_cos_deg(fp_yaw) * 55.0f;
                 uses_synth_sway = 1;
             } else if (xform == TRANSFORM_WASHUP) {
-                eye_pos[0] += ml_sin_deg(fp_yaw) * 35.0f;
+                eye_pos[0] += ml_sin_deg(fp_yaw) * 60.0f;
                 eye_pos[1] += 95.0f;
-                eye_pos[2] += ml_cos_deg(fp_yaw) * 35.0f;
+                eye_pos[2] += ml_cos_deg(fp_yaw) * 60.0f;
+                uses_synth_sway = 1;
             } else if (xform == TRANSFORM_CROC) {
                 eye_pos[0] += ml_sin_deg(fp_yaw) * 15.0f;
                 eye_pos[2] += ml_cos_deg(fp_yaw) * 15.0f;
             } else if (xform == TRANSFORM_WALRUS) {
                 /* Forward + left offset to align with walrus face */
-                f32 fwd = 30.0f;
+                f32 fwd = 40.0f;
                 f32 left = -10.0f;
                 eye_pos[0] += ml_sin_deg(fp_yaw) * fwd - ml_cos_deg(fp_yaw) * left;
                 eye_pos[2] += ml_cos_deg(fp_yaw) * fwd + ml_sin_deg(fp_yaw) * left;
@@ -453,9 +443,9 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                             || st == BS_BTROT_JUMP || st == BS_BTROT_SLIDE);
                 if (in_trot) {
                     /* Kazooie's head: further forward and lower than Banjo's */
-                    eye_pos[0] += ml_sin_deg(fp_yaw) * 40.0f;
-                    eye_pos[1] -= 20.0f;
-                    eye_pos[2] += ml_cos_deg(fp_yaw) * 40.0f;
+                    eye_pos[0] += ml_sin_deg(fp_yaw) * 70.0f;
+                    eye_pos[1] -= 10.0f;
+                    eye_pos[2] += ml_cos_deg(fp_yaw) * 70.0f;
                     uses_synth_sway = 1;
                 } else if (st == BS_FLY || st == BS_BOMB) {
                     /* Flying: camera higher and further forward */
@@ -502,20 +492,29 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                     eye_pos[2] +=  ml_sin_deg(fp_yaw) * sway;
                     eye_pos[1] -= (ml_cos_deg(2.0f * fp_bob_phase) + 1.0f) * 0.5f * FP_TERMITE_SWAY_DIP;
                 }
-            } else if (xform == TRANSFORM_BEE) {
-                if (moving) {
-                    /* Walking: roll (body dip side to side) */
+            } else if (xform == TRANSFORM_BEE || xform == TRANSFORM_WASHUP) {
+                if (moving && xform == TRANSFORM_BEE) {
+                    /* Bee walking: roll (body dip side to side) */
                     fp_bob_phase += FP_BEE_WALK_FREQ * dt;
                     if (fp_bob_phase >= 360.0f) fp_bob_phase -= 360.0f;
                     fp_synth_roll = ml_sin_deg(fp_bob_phase) * FP_BEE_WALK_ROLL;
-                } else {
+                } else if (moving && xform == TRANSFORM_WASHUP) {
+                    /* Washup walking: side-to-side sway with upward arc in middle */
+                    f32 sway;
+                    fp_bob_phase += FP_WASHUP_WALK_FREQ * dt;
+                    if (fp_bob_phase >= 360.0f) fp_bob_phase -= 360.0f;
+                    sway = ml_sin_deg(fp_bob_phase) * FP_WASHUP_SWAY_HORIZ;
+                    eye_pos[0] += -ml_cos_deg(fp_yaw) * sway;
+                    eye_pos[2] +=  ml_sin_deg(fp_yaw) * sway;
+                    eye_pos[1] += (ml_cos_deg(2.0f * fp_bob_phase) + 1.0f) * 0.5f * FP_WASHUP_SWAY_VERT;
+                } else if (!moving) {
                     /* Idle: asymmetric harmonic sway — double-left, single-right */
                     f32 sway;
                     fp_bob_phase += FP_BEE_IDLE_FREQ * dt;
                     if (fp_bob_phase >= 360.0f) fp_bob_phase -= 360.0f;
                     sway = (ml_sin_deg(fp_bob_phase)
                           + FP_BEE_IDLE_HARMONIC * ml_sin_deg(3.0f * fp_bob_phase))
-                         * FP_BEE_IDLE_SWAY;
+                         * (xform == TRANSFORM_WASHUP ? FP_WASHUP_IDLE_SWAY : FP_BEE_IDLE_SWAY);
                     eye_pos[0] += -ml_cos_deg(fp_yaw) * sway;
                     eye_pos[2] +=  ml_sin_deg(fp_yaw) * sway;
                 }
@@ -546,7 +545,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         if (bee_flying || banjo_flying) {
             /* Flight: follow model pitch (inverted) */
             rotation[0] = fp_pitch - model_pitch;
-        } else if (fp_head_tracking) {
+        } else if (head_tracking) {
             if (model_pitch > 10.0f || model_pitch < -10.0f)
                 rotation[0] = fp_pitch + model_pitch;   /* rolls, flips, slides */
             else
@@ -565,7 +564,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
             rotation[1] = mlNormalizeAngle(fp_yaw + 180.0f);
     }
 
-    if (fp_head_tracking) {
+    if (head_tracking) {
         f32 target_roll = fp_clamp(fp_get_body_roll(), -FP_GEO_ROLL_MAX, FP_GEO_ROLL_MAX);
         f32 roll_alpha = FP_BOB_SMOOTH * dt;
         if (roll_alpha > 1.0f) roll_alpha = 1.0f;
