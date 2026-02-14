@@ -16,6 +16,7 @@ elf_path = "build/mod.elf"
 mod_filename = "bk_first_person_mode"
 func_reference_syms_file = "BanjoRecompSyms/bk.us.rev0.syms.toml"
 data_reference_syms_files = [ "BanjoRecompSyms/bk.us.rev0.datasyms.toml" ]
+additional_files = [ "thumb.png" ]
 
 [[manifest.config_options]]
 id = "camera_mode"
