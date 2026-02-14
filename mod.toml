@@ -2,7 +2,7 @@
 id = "bk_better_camera"
 version = "0.1.0"
 display_name = "BK Better Camera"
-description = "Adds a toggled first-person walk mode. Press D-pad Up to enter/exit first-person view while retaining full movement control. Press D-pad Down to toggle head tracking mode."
+description = "Adds a toggled first-person walk mode. Press D-pad Up to enter/exit first-person view while retaining full movement control. Press D-pad Down to toggle head tracking mode. Thanks to ProxyBK for TransformAnywhere, which substantially decreased development time."
 short_description = "First-person camera with free movement"
 authors = [ "derp" ]
 game_id = "bk"
