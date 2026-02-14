@@ -461,13 +461,17 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
             }
         }
 
-        /* Smooth Y to dampen walk-cycle bobbing (bone-tracked forms only) */
-        if (fp_smooth_y == 0.0f)
-            fp_smooth_y = eye_pos[1];        /* seed on first frame */
-        alpha = FP_BOB_SMOOTH * dt;
-        if (alpha > 1.0f) alpha = 1.0f;
-        fp_smooth_y += (eye_pos[1] - fp_smooth_y) * alpha;
-        eye_pos[1] = fp_smooth_y;
+        /* Smooth Y to dampen walk-cycle bobbing (bone-tracked forms only).
+         * Skip for bee/pumpkin — they use player_getPosition(), not bones,
+         * so smoothing just makes the camera lag during vertical movement. */
+        if (xform != TRANSFORM_BEE && xform != TRANSFORM_PUMPKIN) {
+            if (fp_smooth_y == 0.0f)
+                fp_smooth_y = eye_pos[1];        /* seed on first frame */
+            alpha = FP_BOB_SMOOTH * dt;
+            if (alpha > 1.0f) alpha = 1.0f;
+            fp_smooth_y += (eye_pos[1] - fp_smooth_y) * alpha;
+            eye_pos[1] = fp_smooth_y;
+        }
 
         /* Apply synthetic bob AFTER smoothing so the filter doesn't eat it */
         if (uses_synth_bob)
