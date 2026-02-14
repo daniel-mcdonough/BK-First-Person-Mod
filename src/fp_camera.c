@@ -1,5 +1,6 @@
 #include "modding.h"
 #include "recomputils.h"
+#include "recompconfig.h"
 #include "PR/ultratypes.h"
 
 /* ------------------------------------------------------------------ */
@@ -10,7 +11,6 @@ int  bakey_pressed(s32 button);
 u32  bakey_held(s32 button);
 int  can_view_first_person(void);
 void player_getPosition(f32 dst[3]);
-void func_8028E9C4(s32 arg0, f32 dst[3]);
 void player_setModelVisible(s32 visible);
 u32  player_getTransformation(void);
 f32  player_getYaw(void);
@@ -33,6 +33,7 @@ f32  ml_cos_deg(f32 deg);
 
 /* Player model rotation (degrees, used by renderer — captures full rolls/flips) */
 f32  pitch_get(void);
+s32  bastick_getZone(void);
 
 /* ------------------------------------------------------------------ */
 /* Button constants (from enums.h)                                    */
@@ -53,6 +54,17 @@ f32  pitch_get(void);
 #define BONE_HEAD      9
 #define BONE_BODY      5
 
+#define BS_BEE_FLY     0x8C
+
+#define BS_BTROT_JUMP  0x8
+#define BS_BTROT_IDLE  0x15
+#define BS_BTROT_WALK  0x16
+#define BS_BTROT_EXIT  0x17
+#define BS_BTROT_SLIDE 0x45
+
+#define BS_FLY         0x24
+#define BS_BOMB        0x2A
+
 /* ------------------------------------------------------------------ */
 /* Tuning constants                                                    */
 /* ------------------------------------------------------------------ */
@@ -60,8 +72,41 @@ f32  pitch_get(void);
 #define FP_LOOK_SPEED    120.0f   /* degrees per second                */
 #define FP_PITCH_MIN    (-80.0f)  /* look-up limit                     */
 #define FP_PITCH_MAX      80.0f   /* look-down limit                   */
-#define FP_EYE_ARG        5       /* arg0 to func_8028E9C4 for eyes    */
 #define FP_EYE_Y_BOOST   30.0f   /* extra height to reach eye level   */
+
+/* Per-transformation eye heights (units above player position)       */
+#define TRANSFORM_BANJO    1
+#define TRANSFORM_TERMITE  2
+#define TRANSFORM_PUMPKIN  3
+#define TRANSFORM_WALRUS   4
+#define TRANSFORM_CROC     5
+#define TRANSFORM_BEE      6
+#define TRANSFORM_WASHUP   7
+#define FP_BOB_SMOOTH     6.0f   /* Y-smoothing speed (higher = less damping) */
+#define FP_GEO_PITCH_MAX   5.0f  /* max geometric pitch in degrees (limits run/jump lean) */
+#define FP_GEO_ROLL_MAX   10.0f  /* max geometric roll in degrees (limits walk tilt)      */
+
+/* Synthetic head bob for transformations without bone data */
+#define FP_SYNTH_BOB_PUMPKIN_IDLE  310.0f   /* deg/sec  (idle hop, slightly faster)            */
+#define FP_SYNTH_BOB_PUMPKIN_WALK 2466.0f   /* deg/sec  (50 cycles / 7.3 sec × 360)           */
+#define FP_SYNTH_BOB_PUMPKIN_AMP     1.5f   /* Y units — small for rapid walk cycle            */
+#define FP_SYNTH_BOB_PUMPKIN_IDLE_AMP 3.0f  /* Y units — larger for slow idle hop              */
+#define FP_BEE_WALK_FREQ          720.0f   /* deg/sec  (10 cycles / 5 sec × 360)              */
+#define FP_BEE_WALK_ROLL            3.0f   /* degrees of roll rotation (body dip)             */
+
+/* Termite sway: side-to-side with downward dip at extremes */
+#define FP_TERMITE_SWAY_FREQ     300.0f   /* deg/sec  (10 cycles / 12 sec × 360)             */
+#define FP_TERMITE_SWAY_HORIZ      3.0f   /* horizontal sway amplitude (perpendicular to yaw) */
+#define FP_TERMITE_SWAY_DIP        2.0f   /* vertical dip amplitude at extremes               */
+
+/* Talon trot bob */
+#define FP_TROT_BOB_FREQ          360.0f   /* deg/sec  (50 bobs / 50 sec × 360)              */
+#define FP_TROT_BOB_AMP             2.0f   /* Y units                                         */
+
+/* Bee idle sway: asymmetric harmonic — sin(p) + 0.35*sin(3p) */
+#define FP_BEE_IDLE_FREQ         120.0f   /* deg/sec  (10 cycles / 30 sec × 360)             */
+#define FP_BEE_IDLE_SWAY           3.0f   /* horizontal sway amplitude                       */
+#define FP_BEE_IDLE_HARMONIC       0.35f  /* 3rd harmonic weight (creates double-left bounce) */
 
 /* ------------------------------------------------------------------ */
 /* Module state                                                        */
@@ -75,6 +120,11 @@ static s32 fp_last_map;
 static u32 fp_last_transformation;
 static s32 fp_prev_toggle_held;          /* for rising-edge detection    */
 static s32 fp_prev_ht_held;             /* for head-tracking toggle     */
+static f32 fp_smooth_y;                 /* smoothed eye Y position       */
+static f32 fp_smooth_roll;              /* smoothed roll angle           */
+static f32 fp_bob_phase;               /* synthetic bob sine phase (degrees) */
+static f32 fp_bob_strength;            /* 0..1, fades in/out with movement   */
+static f32 fp_synth_roll;             /* synthetic roll offset (degrees)    */
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -147,6 +197,42 @@ static f32 fp_get_body_pitch(void) {
     return -fp_atan2_deg(forward, dy);
 }
 
+/* Synthetic vertical bob for pumpkin */
+static f32 fp_synthetic_bob(f32 dt) {
+    f32 freq, amp;
+    s32 moving = (bastick_getZone() > 0);
+
+    if (moving) {
+        freq = FP_SYNTH_BOB_PUMPKIN_WALK;
+        amp  = FP_SYNTH_BOB_PUMPKIN_AMP;
+    } else {
+        freq = FP_SYNTH_BOB_PUMPKIN_IDLE;
+        amp  = FP_SYNTH_BOB_PUMPKIN_IDLE_AMP;
+    }
+
+    /* Ramp strength toward 1 */
+    fp_bob_strength += (1.0f - fp_bob_strength) * 8.0f * dt;
+    if (fp_bob_strength > 1.0f) fp_bob_strength = 1.0f;
+
+    /* Advance phase */
+    fp_bob_phase += freq * dt;
+    if (fp_bob_phase >= 360.0f) fp_bob_phase -= 360.0f;
+
+    return ml_sin_deg(fp_bob_phase) * amp * fp_bob_strength;
+}
+
+static f32 fp_eye_height(void) {
+    switch (player_getTransformation()) {
+        case TRANSFORM_TERMITE: return  45.0f;
+        case TRANSFORM_PUMPKIN: return  40.0f;
+        case TRANSFORM_CROC:    return  60.0f;
+        case TRANSFORM_WALRUS:  return  80.0f;
+        case TRANSFORM_BEE:     return  95.0f;
+        case TRANSFORM_WASHUP:  return 150.0f;
+        default:                return 130.0f; /* Banjo */
+    }
+}
+
 static void fp_enter(void) {
     f32 rot[3];
 
@@ -158,6 +244,7 @@ static void fp_enter(void) {
     /* Grab current camera pitch so the transition isn't jarring */
     viewport_getRotation_vec3f(rot);
     fp_pitch = rot[0];
+    if (fp_pitch > 180.0f) fp_pitch -= 360.0f;
 
     fp_last_map = map_get();
     fp_last_transformation = player_getTransformation();
@@ -200,6 +287,11 @@ RECOMP_CALLBACK("*", recomp_on_init) void on_init(void) {
     fp_last_transformation = 0;
     fp_prev_toggle_held    = 0;
     fp_prev_ht_held        = 0;
+    fp_smooth_y            = 0.0f;
+    fp_smooth_roll         = 0.0f;
+    fp_bob_phase           = 0.0f;
+    fp_bob_strength        = 0.0f;
+    fp_synth_roll          = 0.0f;
 }
 
 /* ------------------------------------------------------------------ */
@@ -240,6 +332,8 @@ RECOMP_HOOK("ncDynamicCamera_update") void before_camera_update(void) {
 
         if (ht_just_pressed) {
             fp_head_tracking = !fp_head_tracking;
+            fp_smooth_y = 0.0f;             /* re-seed on toggle */
+            fp_smooth_roll = 0.0f;
             player_setModelVisible(fp_head_tracking ? 1 : 0);
         }
     } else {
@@ -268,15 +362,25 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     /* --- look rotation from right stick (C-buttons) --- */
     dt = time_getDelta();
 
-    if (bakey_held(BUTTON_C_LEFT))
-        fp_yaw += FP_LOOK_SPEED * dt;
-    if (bakey_held(BUTTON_C_RIGHT))
-        fp_yaw -= FP_LOOK_SPEED * dt;
-
-    /* Suppress pitch during egg-firing states so C-Up/C-Down don't jerk the camera */
     {
-        s32 state = bs_getState();
-        if (state != BS_EGG_HEAD && state != BS_EGG_ASS) {
+        s32 classic = (s32)recomp_get_config_u32("camera_mode"); /* 0=Strafe, 1=Classic */
+        s32 fly_state = bs_getState();
+        s32 in_flight = (player_getTransformation() == TRANSFORM_BEE && fly_state == BS_BEE_FLY)
+                     || fly_state == BS_FLY || fly_state == BS_BOMB;
+
+        if (classic || in_flight) {
+            /* Classic / flight: camera yaw locked to player facing direction */
+            fp_yaw = player_getYaw();
+        } else {
+            /* Strafe: free horizontal look */
+            if (bakey_held(BUTTON_C_LEFT))
+                fp_yaw += FP_LOOK_SPEED * dt;
+            if (bakey_held(BUTTON_C_RIGHT))
+                fp_yaw -= FP_LOOK_SPEED * dt;
+        }
+
+        /* Vertical look (both modes) — suppress during egg-firing */
+        if (fly_state != BS_EGG_HEAD && fly_state != BS_EGG_ASS) {
             if (bakey_held(BUTTON_C_UP))
                 fp_pitch -= FP_LOOK_SPEED * dt;
             if (bakey_held(BUTTON_C_DOWN))
@@ -301,24 +405,156 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     }
 
     /* --- compute eye position --- */
-    if (fp_head_tracking)
-        baModel_802924E8(eye_pos);           /* animated head bone */
-    else
-        func_8028E9C4(FP_EYE_ARG, eye_pos); /* static height offset */
-    eye_pos[1] += FP_EYE_Y_BOOST;
+    if (fp_head_tracking) {
+        f32 alpha;
+        s32 uses_synth_bob = 0;
+        s32 uses_synth_sway = 0;
+        u32 xform = player_getTransformation();
+
+        if (xform == TRANSFORM_BEE) {
+            /* Bee: no usable bones, use player pos + offset */
+            player_getPosition(eye_pos);
+            eye_pos[0] += ml_sin_deg(fp_yaw) * 40.0f;
+            eye_pos[1] += fp_eye_height();
+            eye_pos[2] += ml_cos_deg(fp_yaw) * 40.0f;
+            uses_synth_sway = 1;
+        } else if (xform == TRANSFORM_PUMPKIN) {
+            /* Pumpkin: no usable bones, use player pos + offset */
+            player_getPosition(eye_pos);
+            eye_pos[0] += ml_sin_deg(fp_yaw) * 30.0f;
+            eye_pos[1] += fp_eye_height();
+            eye_pos[2] += ml_cos_deg(fp_yaw) * 30.0f;
+            uses_synth_bob = 1;
+        } else {
+            baModel_802924E8(eye_pos);           /* animated head bone */
+            eye_pos[1] += FP_EYE_Y_BOOST;
+
+            if (xform == TRANSFORM_TERMITE) {
+                eye_pos[0] += ml_sin_deg(fp_yaw) * 55.0f;
+                eye_pos[1] += 15.0f;
+                eye_pos[2] += ml_cos_deg(fp_yaw) * 55.0f;
+                uses_synth_sway = 1;
+            } else if (xform == TRANSFORM_WASHUP) {
+                eye_pos[0] += ml_sin_deg(fp_yaw) * 35.0f;
+                eye_pos[1] += 95.0f;
+                eye_pos[2] += ml_cos_deg(fp_yaw) * 35.0f;
+            } else if (xform == TRANSFORM_CROC) {
+                eye_pos[0] += ml_sin_deg(fp_yaw) * 15.0f;
+                eye_pos[2] += ml_cos_deg(fp_yaw) * 15.0f;
+            } else if (xform == TRANSFORM_WALRUS) {
+                /* Forward + left offset to align with walrus face */
+                f32 fwd = 30.0f;
+                f32 left = -10.0f;
+                eye_pos[0] += ml_sin_deg(fp_yaw) * fwd - ml_cos_deg(fp_yaw) * left;
+                eye_pos[2] += ml_cos_deg(fp_yaw) * fwd + ml_sin_deg(fp_yaw) * left;
+            } else {
+                s32 st = bs_getState();
+                s32 in_trot = (st == BS_BTROT_IDLE || st == BS_BTROT_WALK
+                            || st == BS_BTROT_JUMP || st == BS_BTROT_SLIDE);
+                if (in_trot) {
+                    /* Kazooie's head: further forward and lower than Banjo's */
+                    eye_pos[0] += ml_sin_deg(fp_yaw) * 40.0f;
+                    eye_pos[1] -= 20.0f;
+                    eye_pos[2] += ml_cos_deg(fp_yaw) * 40.0f;
+                    uses_synth_sway = 1;
+                } else if (st == BS_FLY || st == BS_BOMB) {
+                    /* Flying: camera higher and further forward */
+                    eye_pos[0] += ml_sin_deg(fp_yaw) * 25.0f;
+                    eye_pos[1] += 15.0f;
+                    eye_pos[2] += ml_cos_deg(fp_yaw) * 25.0f;
+                } else {
+                    /* Banjo default: small forward + up nudge */
+                    eye_pos[0] += ml_sin_deg(fp_yaw) * 10.0f;
+                    eye_pos[1] += 5.0f;
+                    eye_pos[2] += ml_cos_deg(fp_yaw) * 10.0f;
+                }
+            }
+        }
+
+        /* Smooth Y to dampen walk-cycle bobbing (bone-tracked forms only) */
+        if (fp_smooth_y == 0.0f)
+            fp_smooth_y = eye_pos[1];        /* seed on first frame */
+        alpha = FP_BOB_SMOOTH * dt;
+        if (alpha > 1.0f) alpha = 1.0f;
+        fp_smooth_y += (eye_pos[1] - fp_smooth_y) * alpha;
+        eye_pos[1] = fp_smooth_y;
+
+        /* Apply synthetic bob AFTER smoothing so the filter doesn't eat it */
+        if (uses_synth_bob)
+            eye_pos[1] += fp_synthetic_bob(dt);
+
+        /* Synthetic sway (termite + bee + trot) */
+        if (uses_synth_sway) {
+            s32 moving = (bastick_getZone() > 0);
+            if (xform == TRANSFORM_TERMITE) {
+                if (moving) {
+                    /* Walking: vertical bob like pumpkin walk */
+                    fp_bob_phase += FP_SYNTH_BOB_PUMPKIN_WALK * dt;
+                    if (fp_bob_phase >= 360.0f) fp_bob_phase -= 360.0f;
+                    eye_pos[1] += ml_sin_deg(fp_bob_phase) * FP_SYNTH_BOB_PUMPKIN_AMP;
+                } else {
+                    /* Idle: side-to-side sway with downward dip in middle */
+                    f32 sway;
+                    fp_bob_phase += FP_TERMITE_SWAY_FREQ * dt;
+                    if (fp_bob_phase >= 360.0f) fp_bob_phase -= 360.0f;
+                    sway = ml_sin_deg(fp_bob_phase) * FP_TERMITE_SWAY_HORIZ;
+                    eye_pos[0] += -ml_cos_deg(fp_yaw) * sway;
+                    eye_pos[2] +=  ml_sin_deg(fp_yaw) * sway;
+                    eye_pos[1] -= (ml_cos_deg(2.0f * fp_bob_phase) + 1.0f) * 0.5f * FP_TERMITE_SWAY_DIP;
+                }
+            } else if (xform == TRANSFORM_BEE) {
+                if (moving) {
+                    /* Walking: roll (body dip side to side) */
+                    fp_bob_phase += FP_BEE_WALK_FREQ * dt;
+                    if (fp_bob_phase >= 360.0f) fp_bob_phase -= 360.0f;
+                    fp_synth_roll = ml_sin_deg(fp_bob_phase) * FP_BEE_WALK_ROLL;
+                } else {
+                    /* Idle: asymmetric harmonic sway — double-left, single-right */
+                    f32 sway;
+                    fp_bob_phase += FP_BEE_IDLE_FREQ * dt;
+                    if (fp_bob_phase >= 360.0f) fp_bob_phase -= 360.0f;
+                    sway = (ml_sin_deg(fp_bob_phase)
+                          + FP_BEE_IDLE_HARMONIC * ml_sin_deg(3.0f * fp_bob_phase))
+                         * FP_BEE_IDLE_SWAY;
+                    eye_pos[0] += -ml_cos_deg(fp_yaw) * sway;
+                    eye_pos[2] +=  ml_sin_deg(fp_yaw) * sway;
+                }
+            } else {
+                /* Talon trot: vertical bob when running */
+                if (moving) {
+                    fp_bob_phase += FP_TROT_BOB_FREQ * dt;
+                    if (fp_bob_phase >= 360.0f) fp_bob_phase -= 360.0f;
+                    eye_pos[1] += ml_sin_deg(fp_bob_phase) * FP_TROT_BOB_AMP;
+                }
+            }
+        }
+    } else {
+        player_getPosition(eye_pos);
+        eye_pos[1] += fp_eye_height();
+    }
 
     /* --- apply to viewport --- */
-    if (fp_head_tracking) {
+    {
+        s32 fly_st = bs_getState();
+        s32 bee_flying = (player_getTransformation() == TRANSFORM_BEE
+                          && fly_st == BS_BEE_FLY);
+        s32 banjo_flying = (fly_st == BS_FLY || fly_st == BS_BOMB);
         f32 model_pitch = pitch_get();
         /* Convert 0-360 range to signed ±180 */
         if (model_pitch > 180.0f) model_pitch -= 360.0f;
 
-        if (model_pitch > 10.0f || model_pitch < -10.0f)
-            rotation[0] = fp_pitch + model_pitch;   /* rolls, flips, slides */
-        else
-            rotation[0] = fp_pitch + fp_get_body_pitch(); /* crouching, small tilts */
-    } else {
-        rotation[0] = fp_pitch;
+        if (bee_flying || banjo_flying) {
+            /* Flight: follow model pitch (inverted) */
+            rotation[0] = fp_pitch - model_pitch;
+        } else if (fp_head_tracking) {
+            if (model_pitch > 10.0f || model_pitch < -10.0f)
+                rotation[0] = fp_pitch + model_pitch;   /* rolls, flips, slides */
+            else
+                rotation[0] = fp_pitch + fp_clamp(fp_get_body_pitch(),
+                                                   -FP_GEO_PITCH_MAX, FP_GEO_PITCH_MAX);
+        } else {
+            rotation[0] = fp_pitch;
+        }
     }
 
     {
@@ -329,10 +565,17 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
             rotation[1] = mlNormalizeAngle(fp_yaw + 180.0f);
     }
 
-    if (fp_head_tracking)
-        rotation[2] = fp_get_body_roll();
-    else
-        rotation[2] = 0.0f;
+    if (fp_head_tracking) {
+        f32 target_roll = fp_clamp(fp_get_body_roll(), -FP_GEO_ROLL_MAX, FP_GEO_ROLL_MAX);
+        f32 roll_alpha = FP_BOB_SMOOTH * dt;
+        if (roll_alpha > 1.0f) roll_alpha = 1.0f;
+        fp_smooth_roll += (target_roll - fp_smooth_roll) * roll_alpha;
+        rotation[2] = fp_smooth_roll + fp_synth_roll;
+    } else {
+        fp_smooth_roll = 0.0f;
+        rotation[2] = fp_synth_roll;
+    }
+    fp_synth_roll = 0.0f;
 
     viewport_setPosition_vec3f(eye_pos);
     viewport_setRotation_vec3f(rotation);

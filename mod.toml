@@ -2,7 +2,7 @@
 id = "bk_better_camera"
 version = "0.1.0"
 display_name = "BK Better Camera"
-description = "Adds a toggled first-person walk mode. Press L+C-Up to enter/exit first-person view while retaining full movement control."
+description = "Adds a toggled first-person walk mode. Press D-pad Up to enter/exit first-person view while retaining full movement control. Press D-pad Down to toggle head tracking mode."
 short_description = "First-person camera with free movement"
 authors = [ "derp" ]
 game_id = "bk"
@@ -18,9 +18,9 @@ func_reference_syms_file = "BanjoRecompSyms/bk.us.rev0.syms.toml"
 data_reference_syms_files = [ "BanjoRecompSyms/bk.us.rev0.datasyms.toml" ]
 
 [[manifest.config_options]]
-id = "head_tracking"
-name = "Head Tracking"
-description = "Camera follows the player's head bone during animations instead of using a fixed height offset"
+id = "camera_mode"
+name = "Camera Mode"
+description = "Strafe: camera direction is independent, player can strafe. Classic: camera follows the player's facing direction."
 type = "Enum"
-options = [ "Off", "On" ]
-default = "Off"
+options = [ "Strafe", "Classic" ]
+default = "Strafe"
