@@ -23,19 +23,30 @@ jobs:
           curl -L -o RecompModTool https://github.com/N64Recomp/N64Recomp/releases/download/mod-tool-release/RecompModTool
           chmod +x RecompModTool
 
+      - name: Set version from tag
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            sed -i "s/^version = .*/version = \"$VERSION\"/" mod.toml
+          else
+            VERSION=$(grep '^version' mod.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Build
         run: make
 
       - name: Package
-        run: zip -j BK_First_Person_Mode.zip build/bk_first_person_mode.nrm icon.png thumb.png manifest.json README.md
+        run: zip -j bk_first_person_mode-${{ steps.version.outputs.version }}.zip build/bk_first_person_mode-${{ steps.version.outputs.version }}.nrm icon.png thumb.png manifest.json README.md
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: BK_First_Person_Mode
+          name: BK_First_Person_Mode-${{ steps.version.outputs.version }}
           path: |
-            build/bk_first_person_mode.nrm
-            BK_First_Person_Mode.zip
+            build/bk_first_person_mode-${{ steps.version.outputs.version }}.nrm
+            bk_first_person_mode-${{ steps.version.outputs.version }}.zip
 
   release:
     needs: build
@@ -44,14 +55,18 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
       - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: BK_First_Person_Mode
+          name: BK_First_Person_Mode-${{ steps.version.outputs.version }}
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            build/bk_first_person_mode.nrm
-            BK_First_Person_Mode.zip
+            build/bk_first_person_mode-${{ steps.version.outputs.version }}.nrm
+            bk_first_person_mode-${{ steps.version.outputs.version }}.zip

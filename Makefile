@@ -1,5 +1,6 @@
 BUILD_DIR := build
 NAME := bk_first_person_mode
+VERSION := $(shell grep '^version' mod.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
 
 # Allow the user to specify the compiler and linker on macOS
 # as Apple Clang does not support MIPS architecture
@@ -23,8 +24,10 @@ ifeq ($(wildcard $(MODTOOL)$(PROG_SUFFIX)),)
 $(error "Please place the RecompModTool executable in the root of this repo.")
 endif
 
-TARGET := $(BUILD_DIR)/mod.elf
-NRM    := $(BUILD_DIR)/$(NAME).nrm
+TARGET  := $(BUILD_DIR)/mod.elf
+NRM     := $(BUILD_DIR)/$(NAME).nrm
+NRM_VER := $(BUILD_DIR)/$(NAME)-$(VERSION).nrm
+ZIP_VER := $(NAME)-$(VERSION).zip
 
 LDSCRIPT := mod.ld
 ARCHFLAGS := -target mips -mips2 -mabi=32 -O2 -G0 -mno-abicalls -mno-odd-spreg -mno-check-zero-division \
@@ -47,10 +50,16 @@ ALL_OBJS := $(C_OBJS)
 ALL_DEPS := $(C_DEPS)
 BUILD_DIRS := $(call getdirs,$(ALL_OBJS))
 
-all: $(NRM)
+all: $(NRM_VER)
 
 $(NRM): $(TARGET)
 	$(MODTOOL) mod.toml $(BUILD_DIR)
+
+$(NRM_VER): $(NRM)
+	cp $(NRM) $(NRM_VER)
+
+release: $(NRM_VER)
+	zip $(ZIP_VER) $(NRM_VER)
 
 $(TARGET): $(ALL_OBJS) $(LDSCRIPT) | $(BUILD_DIR)
 	$(LD) $(ALL_OBJS) $(LDFLAGS) -o $@
@@ -74,7 +83,7 @@ endif
 
 -include $(ALL_DEPS)
 
-.PHONY: clean all
+.PHONY: clean all release
 
 # Print target for debugging
 print-% : ; $(info $* is a $(flavor $*) variable set to [$($*)]) @true
