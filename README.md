@@ -5,6 +5,10 @@ A mod for Banjo-Kazooie Recompiled that adds a toggled first-person camera with 
 
 ## Changelog
 
+### 0.3.1
+
+- Default Banjo forward camera to 15
+
 ### 0.3.0
 - Configurable FOV (30-120)
 - Wading boots camera support
