@@ -66,6 +66,11 @@ s32  bastick_getZone(void);
 #define BS_FLY         0x24
 #define BS_BOMB        0x2A
 
+#define BS_LONGLEG_IDLE  0x26
+#define BS_LONGLEG_WALK  0x27
+#define BS_LONGLEG_JUMP  0x28
+#define BS_LONGLEG_SLIDE 0x55
+
 /* ------------------------------------------------------------------ */
 /* Tuning constants                                                    */
 /* ------------------------------------------------------------------ */
@@ -343,6 +348,10 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     f32 cfg_termite_height, cfg_termite_fwd, cfg_pumpkin_height, cfg_pumpkin_fwd;
     f32 cfg_croc_height, cfg_croc_fwd, cfg_walrus_height, cfg_walrus_fwd;
     f32 cfg_bee_height, cfg_bee_fwd;
+    f32 cfg_boots_height, cfg_boots_fwd;
+    f32 cfg_banjo_bob_amount;
+    f32 cfg_banjo_roll;
+    f32 cfg_banjo_pitch;
 
     if (!fp_active)
         return;
@@ -367,6 +376,11 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     cfg_walrus_fwd     = (f32)recomp_get_config_double("walrus_forward");
     cfg_bee_height     = (f32)recomp_get_config_double("bee_height");
     cfg_bee_fwd        = (f32)recomp_get_config_double("bee_forward");
+    cfg_boots_height   = (f32)recomp_get_config_double("boots_height");
+    cfg_boots_fwd      = (f32)recomp_get_config_double("boots_forward");
+    cfg_banjo_bob_amount = (f32)recomp_get_config_double("banjo_bob");
+    cfg_banjo_roll       = (f32)recomp_get_config_double("banjo_roll");
+    cfg_banjo_pitch      = (f32)recomp_get_config_double("banjo_pitch");
 
     /* --- safety checks --- */
     if (fp_should_auto_exit()) {
@@ -425,6 +439,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         s32 uses_synth_bob = 0;
         s32 uses_synth_sway = 0;
         s32 uses_bone_y = 0;
+        f32 smooth_speed = FP_BOB_SMOOTH;
         u32 xform = player_getTransformation();
         f32 player_pos[3];
 
@@ -472,7 +487,15 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                 s32 st = bs_getState();
                 s32 in_trot = (st == BS_BTROT_IDLE || st == BS_BTROT_WALK
                             || st == BS_BTROT_JUMP || st == BS_BTROT_SLIDE);
-                if (in_trot) {
+                s32 in_boots = (st == BS_LONGLEG_IDLE || st == BS_LONGLEG_WALK
+                             || st == BS_LONGLEG_JUMP || st == BS_LONGLEG_SLIDE);
+                if (in_boots) {
+                    /* Wading boots: relative offset from bone */
+                    eye_pos[1] += FP_EYE_Y_BOOST + cfg_boots_height;
+                    eye_pos[0] += ml_sin_deg(fp_yaw) * cfg_boots_fwd;
+                    eye_pos[2] += ml_cos_deg(fp_yaw) * cfg_boots_fwd;
+                    uses_bone_y = 1;
+                } else if (in_trot) {
                     /* Kazooie's head: relative offset from bone */
                     eye_pos[1] += FP_EYE_Y_BOOST + cfg_trot_height;
                     eye_pos[0] += ml_sin_deg(fp_yaw) * cfg_trot_fwd;
@@ -486,10 +509,12 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                     eye_pos[2] += ml_cos_deg(fp_yaw) * cfg_flight_fwd;
                     uses_bone_y = 1;
                 } else {
-                    /* Banjo default: absolute height above player position */
-                    eye_pos[1] = player_pos[1] + cfg_banjo_height;
+                    /* Banjo default: bone-tracked with configurable smoothing */
+                    eye_pos[1] += FP_EYE_Y_BOOST + 5.0f;
                     eye_pos[0] += ml_sin_deg(fp_yaw) * cfg_banjo_fwd;
                     eye_pos[2] += ml_cos_deg(fp_yaw) * cfg_banjo_fwd;
+                    uses_bone_y = 1;
+                    smooth_speed = cfg_banjo_bob_amount;
                 }
             }
         }
@@ -499,7 +524,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         if (uses_bone_y) {
             if (fp_smooth_y == 0.0f)
                 fp_smooth_y = eye_pos[1];        /* seed on first frame */
-            alpha = FP_BOB_SMOOTH * dt;
+            alpha = smooth_speed * dt;
             if (alpha > 1.0f) alpha = 1.0f;
             fp_smooth_y += (eye_pos[1] - fp_smooth_y) * alpha;
             eye_pos[1] = fp_smooth_y;
@@ -595,7 +620,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                 rotation[0] = fp_pitch + model_pitch;   /* rolls, flips, slides */
             else
                 rotation[0] = fp_pitch + fp_clamp(fp_get_body_pitch(),
-                                                   -FP_GEO_PITCH_MAX, FP_GEO_PITCH_MAX);
+                                                   -cfg_banjo_pitch, cfg_banjo_pitch);
         } else {
             rotation[0] = fp_pitch;
         }
@@ -628,7 +653,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
             fp_smooth_roll += (target_roll - fp_smooth_roll) * roll_alpha;
             rotation[2] = fp_smooth_roll + fp_synth_roll;
         } else if (head_tracking) {
-            f32 target_roll = fp_clamp(fp_get_body_roll(), -FP_GEO_ROLL_MAX, FP_GEO_ROLL_MAX);
+            f32 target_roll = fp_clamp(fp_get_body_roll(), -cfg_banjo_roll, cfg_banjo_roll);
             f32 roll_alpha = FP_BOB_SMOOTH * dt;
             if (roll_alpha > 1.0f) roll_alpha = 1.0f;
             fp_smooth_roll += (target_roll - fp_smooth_roll) * roll_alpha;

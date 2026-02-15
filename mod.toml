@@ -71,28 +71,88 @@ percent = false
 default = 10
 
 [[manifest.config_options]]
+id = "banjo_bob"
+name = "Banjo Head Bob (6)"
+description = "Controls skeleton head bob damping. Lower = smoother camera with less bob, higher = more skeleton movement visible."
+type = "Number"
+min = 1
+max = 20
+step = 1
+precision = 0
+percent = false
+default = 6
+
+[[manifest.config_options]]
+id = "banjo_roll"
+name = "Banjo Walk Roll (10)"
+description = "Max camera roll from arm sway during walking. 0 = no roll, higher = more tilt."
+type = "Number"
+min = 0
+max = 30
+step = 1
+precision = 0
+percent = false
+default = 10
+
+[[manifest.config_options]]
+id = "banjo_pitch"
+name = "Banjo Body Pitch (5)"
+description = "Max camera pitch from body lean during walking and idle. 0 = no lean, higher = more forward/back tilt."
+type = "Number"
+min = 0
+max = 20
+step = 1
+precision = 0
+percent = false
+default = 5
+
+[[manifest.config_options]]
 id = "trot_height"
-name = "Talon Trot Height (-10)"
+name = "Talon Trot Height (-20)"
 description = "Camera height offset for Talon Trot (relative to bone)."
+type = "Number"
+min = -100
+max = 200
+step = 1
+precision = 0
+percent = false
+default = -20
+
+[[manifest.config_options]]
+id = "trot_forward"
+name = "Talon Trot Forward (100)"
+description = "Camera forward offset for Talon Trot."
+type = "Number"
+min = -20
+max = 150
+step = 1
+precision = 0
+percent = false
+default = 100
+
+[[manifest.config_options]]
+id = "boots_height"
+name = "Wading Boots Height (86)"
+description = "Camera height offset for Wading Boots (relative to bone)."
 type = "Number"
 min = -50
 max = 200
 step = 1
 precision = 0
 percent = false
-default = -10
+default = 86
 
 [[manifest.config_options]]
-id = "trot_forward"
-name = "Talon Trot Forward (70)"
-description = "Camera forward offset for Talon Trot."
+id = "boots_forward"
+name = "Wading Boots Forward (-5)"
+description = "Camera forward offset for Wading Boots."
 type = "Number"
 min = -20
 max = 100
 step = 1
 precision = 0
 percent = false
-default = 70
+default = -5
 
 [[manifest.config_options]]
 id = "flight_height"

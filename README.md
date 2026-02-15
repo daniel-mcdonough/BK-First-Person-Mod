@@ -2,6 +2,15 @@
 
 A mod for Banjo-Kazooie Recompiled that adds a toggled first-person camera with full movement control.
 
+
+## Changelog
+
+### 0.3.0
+- Configurable FOV (30-120)
+- Wading boots camera support
+- Changed Talon Trot camera position
+- Banjo head bob, roll, and pitch sliders if you hate how much Banjo's head move around
+
 ## Features
 
 - **D-pad Up**: Toggle first-person mode on/off
@@ -63,6 +72,8 @@ You can see parts of the character model when moving independently of the camera
 - Banjo's original head bobbing locked to his skeleton was so violent, it was unusable. The roll and pitch was very harsh.
 - The bee's idle animation has an asymmetric sway pattern (double/triple-left bounce, single-right). I think this is the only transformation with an asymmetrical animation.
 - During flight (both bee and Banjo), the camera control inverts to match the flight controls.
+
+
 
 
 
