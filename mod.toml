@@ -36,7 +36,7 @@ default = "on"
 
 [[manifest.config_options]]
 id = "fov"
-name = "FOV"
+name = "FOV (60)"
 description = "Field of view in degrees."
 type = "Number"
 min = 30
@@ -48,7 +48,7 @@ default = 60
 
 [[manifest.config_options]]
 id = "banjo_height"
-name = "Banjo Height"
+name = "Banjo Height (130)"
 description = "Camera height for Banjo (default form)."
 type = "Number"
 min = -50
@@ -60,7 +60,7 @@ default = 130
 
 [[manifest.config_options]]
 id = "banjo_forward"
-name = "Banjo Forward"
+name = "Banjo Forward (10)"
 description = "Camera forward offset for Banjo (default form)."
 type = "Number"
 min = -20
@@ -72,7 +72,7 @@ default = 10
 
 [[manifest.config_options]]
 id = "trot_height"
-name = "Talon Trot Height"
+name = "Talon Trot Height (-10)"
 description = "Camera height offset for Talon Trot (relative to bone)."
 type = "Number"
 min = -50
@@ -84,7 +84,7 @@ default = -10
 
 [[manifest.config_options]]
 id = "trot_forward"
-name = "Talon Trot Forward"
+name = "Talon Trot Forward (70)"
 description = "Camera forward offset for Talon Trot."
 type = "Number"
 min = -20
@@ -96,7 +96,7 @@ default = 70
 
 [[manifest.config_options]]
 id = "flight_height"
-name = "Flight Height"
+name = "Flight Height (15)"
 description = "Camera height offset for Banjo flight (relative to bone)."
 type = "Number"
 min = -50
@@ -108,7 +108,7 @@ default = 15
 
 [[manifest.config_options]]
 id = "flight_forward"
-name = "Flight Forward"
+name = "Flight Forward (25)"
 description = "Camera forward offset for Banjo flight."
 type = "Number"
 min = -20
@@ -120,7 +120,7 @@ default = 25
 
 [[manifest.config_options]]
 id = "termite_height"
-name = "Termite Height"
+name = "Termite Height (45)"
 description = "Camera height for Termite."
 type = "Number"
 min = -50
@@ -132,7 +132,7 @@ default = 45
 
 [[manifest.config_options]]
 id = "termite_forward"
-name = "Termite Forward"
+name = "Termite Forward (55)"
 description = "Camera forward offset for Termite."
 type = "Number"
 min = -20
@@ -144,7 +144,7 @@ default = 55
 
 [[manifest.config_options]]
 id = "pumpkin_height"
-name = "Pumpkin Height"
+name = "Pumpkin Height (40)"
 description = "Camera height for Pumpkin."
 type = "Number"
 min = -50
@@ -156,7 +156,7 @@ default = 40
 
 [[manifest.config_options]]
 id = "pumpkin_forward"
-name = "Pumpkin Forward"
+name = "Pumpkin Forward (30)"
 description = "Camera forward offset for Pumpkin."
 type = "Number"
 min = -20
@@ -168,7 +168,7 @@ default = 30
 
 [[manifest.config_options]]
 id = "croc_height"
-name = "Croc Height"
+name = "Croc Height (60)"
 description = "Camera height for Croc."
 type = "Number"
 min = -50
@@ -180,7 +180,7 @@ default = 60
 
 [[manifest.config_options]]
 id = "croc_forward"
-name = "Croc Forward"
+name = "Croc Forward (15)"
 description = "Camera forward offset for Croc."
 type = "Number"
 min = -20
@@ -192,7 +192,7 @@ default = 15
 
 [[manifest.config_options]]
 id = "walrus_height"
-name = "Walrus Height"
+name = "Walrus Height (80)"
 description = "Camera height for Walrus."
 type = "Number"
 min = -50
@@ -204,7 +204,7 @@ default = 80
 
 [[manifest.config_options]]
 id = "walrus_forward"
-name = "Walrus Forward"
+name = "Walrus Forward (40)"
 description = "Camera forward offset for Walrus."
 type = "Number"
 min = -20
@@ -216,7 +216,7 @@ default = 40
 
 [[manifest.config_options]]
 id = "bee_height"
-name = "Bee Height"
+name = "Bee Height (55)"
 description = "Camera height for Bee."
 type = "Number"
 min = -50
@@ -228,7 +228,7 @@ default = 55
 
 [[manifest.config_options]]
 id = "bee_forward"
-name = "Bee Forward"
+name = "Bee Forward (55)"
 description = "Camera forward offset for Bee."
 type = "Number"
 min = -20
