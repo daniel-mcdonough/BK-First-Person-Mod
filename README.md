@@ -18,7 +18,15 @@ A mod for Banjo-Kazooie Recompiled that adds a toggled first-person camera with 
 - **Off** (default): Static camera at eye level, player model hidden
 - **On**: Camera follows animated head bone with geometric pitch/roll, player model visible
 
-Configurable in the mod settings menu.
+### FOV
+
+Adjustable field of view from 30 to 120 degrees (default 60). Original FOV is restored when exiting first-person mode.
+
+### Per-Form Camera Sliders
+
+Each transformation has configurable **height** and **forward offset** sliders in the mod settings menu, allowing fine-tuning of camera placement per form. Defaults are shown in the slider names for easy reference.
+
+All configurable in the mod settings menu.
 
 ### Per-Form Support
 
