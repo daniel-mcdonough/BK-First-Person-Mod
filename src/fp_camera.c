@@ -152,6 +152,8 @@ static f32 fp_bob_strength;            /* 0..1, fades in/out with movement   */
 static f32 fp_synth_roll;             /* synthetic roll offset (degrees)    */
 static f32 fp_prev_yaw;              /* previous frame yaw for turn rate   */
 static f32 fp_saved_fov;             /* original FOV to restore on exit    */
+static s32 fp_restore_after_transition; /* re-enter FP when transition ends */
+static f32 fp_restore_pitch;         /* saved pitch for transition restore */
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -252,6 +254,7 @@ static void fp_enter(void) {
     f32 rot[3];
 
     fp_active = 1;
+    fp_restore_after_transition = 0;
     fp_saved_fov = viewport_getFOVy();
 
     /* Initialise yaw from player facing direction */
@@ -312,6 +315,8 @@ RECOMP_CALLBACK("*", recomp_on_init) void on_init(void) {
     fp_synth_roll          = 0.0f;
     fp_prev_yaw            = 0.0f;
     fp_saved_fov           = 0.0f;
+    fp_restore_after_transition = 0;
+    fp_restore_pitch       = 0.0f;
 }
 
 /* ------------------------------------------------------------------ */
@@ -322,6 +327,30 @@ RECOMP_PATCH int bainput_should_look_first_person_camera(void) {
     if (fp_active)
         return 0;
     return bakey_pressed(BUTTON_C_UP) && can_view_first_person();
+}
+
+/* ------------------------------------------------------------------ */
+/* HOOK — transitionToMap: save FP state when a map transition starts  */
+/* ------------------------------------------------------------------ */
+
+RECOMP_HOOK("transitionToMap") void on_transition_start(void) {
+    if (fp_active) {
+        fp_restore_after_transition = 1;
+        fp_restore_pitch = fp_pitch;
+        fp_exit();
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* HOOK_RETURN — func_80295914: restore FP after player spawns         */
+/* ------------------------------------------------------------------ */
+
+RECOMP_HOOK_RETURN("func_80295914") void on_player_spawned(void) {
+    if (fp_restore_after_transition) {
+        fp_restore_after_transition = 0;
+        fp_enter();
+        fp_pitch = fp_restore_pitch;
+    }
 }
 
 /* ------------------------------------------------------------------ */
