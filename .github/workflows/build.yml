@@ -16,7 +16,7 @@ jobs:
           submodules: recursive
 
       - name: Install Deps
-        run: sudo apt-get update && sudo apt-get install -y lld zip
+        run: sudo apt-get update && sudo apt-get install -y lld zip libx11-dev libxfixes-dev
 
       - name: Download RecompModTool
         run: |
@@ -39,7 +39,7 @@ jobs:
         run: make
 
       - name: Package
-        run: zip -j bk_first_person_mode-${{ steps.version.outputs.version }}.zip build/bk_first_person_mode-${{ steps.version.outputs.version }}.nrm icon.png thumb.png manifest.json README.md
+        run: zip -j bk_first_person_mode-${{ steps.version.outputs.version }}.zip build/bk_first_person_mode-${{ steps.version.outputs.version }}.nrm build/bk_mouse_input.so icon.png thumb.png manifest.json README.md
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -47,6 +47,7 @@ jobs:
           name: BK_First_Person_Mode-${{ steps.version.outputs.version }}
           path: |
             build/bk_first_person_mode-${{ steps.version.outputs.version }}.nrm
+            build/bk_mouse_input.so
             bk_first_person_mode-${{ steps.version.outputs.version }}.zip
 
   release:
@@ -70,4 +71,5 @@ jobs:
         with:
           files: |
             build/bk_first_person_mode-${{ steps.version.outputs.version }}.nrm
+            build/bk_mouse_input.so
             bk_first_person_mode-${{ steps.version.outputs.version }}.zip

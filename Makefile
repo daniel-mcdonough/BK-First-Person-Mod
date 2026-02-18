@@ -29,6 +29,11 @@ NRM     := $(BUILD_DIR)/$(NAME).nrm
 NRM_VER := $(BUILD_DIR)/$(NAME)-$(VERSION).nrm
 ZIP_VER := $(NAME)-$(VERSION).zip
 
+# Native library (Linux X11 mouse input)
+CC_NATIVE  := gcc
+NATIVE_SRC := native/bk_mouse_input.c
+NATIVE_SO  := $(BUILD_DIR)/bk_mouse_input.so
+
 LDSCRIPT := mod.ld
 ARCHFLAGS := -target mips -mips2 -mabi=32 -O2 -G0 -mno-abicalls -mno-odd-spreg -mno-check-zero-division \
              -fomit-frame-pointer -ffast-math -fno-unsafe-math-optimizations -fno-builtin-memset -funsigned-char -fno-builtin-sinf -fno-builtin-cosf
@@ -50,7 +55,7 @@ ALL_OBJS := $(C_OBJS)
 ALL_DEPS := $(C_DEPS)
 BUILD_DIRS := $(call getdirs,$(ALL_OBJS))
 
-all: $(NRM_VER)
+all: $(NRM_VER) $(NATIVE_SO)
 
 $(NRM): $(TARGET)
 	$(MODTOOL) mod.toml $(BUILD_DIR)
@@ -58,8 +63,11 @@ $(NRM): $(TARGET)
 $(NRM_VER): $(NRM)
 	cp $(NRM) $(NRM_VER)
 
-release: $(NRM_VER)
-	zip $(ZIP_VER) $(NRM_VER)
+$(NATIVE_SO): $(NATIVE_SRC) | $(BUILD_DIR)
+	$(CC_NATIVE) -shared -fPIC -Wall -Wextra -o $@ $< -lX11 -lXfixes
+
+release: $(NRM_VER) $(NATIVE_SO)
+	zip $(ZIP_VER) $(NRM_VER) $(NATIVE_SO)
 
 $(TARGET): $(ALL_OBJS) $(LDSCRIPT) | $(BUILD_DIR)
 	$(LD) $(ALL_OBJS) $(LDFLAGS) -o $@

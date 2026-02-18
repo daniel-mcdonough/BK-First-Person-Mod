@@ -9,7 +9,10 @@ game_id = "bk"
 minimum_recomp_version = "1.0.0"
 dependencies = []
 optional_dependencies = []
-native_libraries = []
+native_libraries = [ { name = "bk_mouse_input", funcs = [
+    "mouse_poll", "mouse_get_delta_x", "mouse_get_delta_y",
+    "mouse_set_enabled", "mouse_is_enabled", "mouse_is_captured"
+] } ]
 
 [inputs]
 elf_path = "build/mod.elf"
@@ -297,3 +300,43 @@ step = 1
 precision = 0
 percent = false
 default = 55
+
+[[manifest.config_options]]
+id = "mouse_enabled"
+name = "Mouse Look"
+description = "Enable mouse look in first-person mode. Press 2 to temporarily release the mouse without exiting FP."
+type = "Enum"
+options = [ "Off", "On" ]
+default = "On"
+
+[[manifest.config_options]]
+id = "mouse_sensitivity_x"
+name = "Mouse Sensitivity X (3.0)"
+description = "Horizontal mouse sensitivity."
+type = "Number"
+min = 0.5
+max = 10.0
+step = 0.5
+precision = 1
+percent = false
+default = 3.0
+
+[[manifest.config_options]]
+id = "mouse_sensitivity_y"
+name = "Mouse Sensitivity Y (3.0)"
+description = "Vertical mouse sensitivity."
+type = "Number"
+min = 0.5
+max = 10.0
+step = 0.5
+precision = 1
+percent = false
+default = 3.0
+
+[[manifest.config_options]]
+id = "mouse_invert_y"
+name = "Mouse Invert Y"
+description = "Invert vertical mouse axis."
+type = "Enum"
+options = [ "Off", "On" ]
+default = "Off"

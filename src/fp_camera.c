@@ -33,6 +33,17 @@ f32  ml_cos_deg(f32 deg);
 f32  viewport_getFOVy(void);
 void viewport_setFOVy(f32 fovy);
 
+/* ------------------------------------------------------------------ */
+/* Native mouse input library (imported from own mod's native .so)     */
+/* ------------------------------------------------------------------ */
+
+RECOMP_IMPORT(".", void mouse_poll(void));
+RECOMP_IMPORT(".", int  mouse_get_delta_x(void));
+RECOMP_IMPORT(".", int  mouse_get_delta_y(void));
+RECOMP_IMPORT(".", void mouse_set_enabled(int enabled));
+RECOMP_IMPORT(".", int  mouse_is_enabled(void));
+RECOMP_IMPORT(".", int  mouse_is_captured(void));
+
 /* Player model rotation (degrees, used by renderer — captures full rolls/flips) */
 f32  pitch_get(void);
 s32  bastick_getZone(void);
@@ -254,12 +265,15 @@ static void fp_enter(void) {
 
     if (!recomp_get_config_u32("head_tracking"))
         player_setModelVisible(0);
+
+    mouse_set_enabled(1);
 }
 
 static void fp_exit(void) {
     fp_active = 0;
     player_setModelVisible(1);
     viewport_setFOVy(fp_saved_fov);
+    mouse_set_enabled(0);
 }
 
 /* ------------------------------------------------------------------ */
@@ -352,6 +366,8 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     f32 cfg_banjo_bob_amount;
     f32 cfg_banjo_roll;
     f32 cfg_banjo_pitch;
+    f32 cfg_mouse_sens_x, cfg_mouse_sens_y;
+    s32 cfg_mouse_invert_y, cfg_mouse_enabled;
 
     if (!fp_active)
         return;
@@ -381,6 +397,11 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     cfg_banjo_bob_amount = (f32)recomp_get_config_double("banjo_bob");
     cfg_banjo_roll       = (f32)recomp_get_config_double("banjo_roll");
     cfg_banjo_pitch      = (f32)recomp_get_config_double("banjo_pitch");
+
+    cfg_mouse_sens_x   = (f32)recomp_get_config_double("mouse_sensitivity_x");
+    cfg_mouse_sens_y   = (f32)recomp_get_config_double("mouse_sensitivity_y");
+    cfg_mouse_invert_y = (s32)recomp_get_config_u32("mouse_invert_y");
+    cfg_mouse_enabled  = (s32)recomp_get_config_u32("mouse_enabled");
 
     /* --- safety checks --- */
     if (fp_should_auto_exit()) {
@@ -414,6 +435,21 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                 fp_pitch -= FP_LOOK_SPEED * dt;
             if (bakey_held(BUTTON_C_DOWN))
                 fp_pitch += FP_LOOK_SPEED * dt;
+        }
+
+        /* Mouse look (additive with C-buttons) */
+        if (cfg_mouse_enabled) {
+            mouse_poll();
+            if (mouse_is_captured()) {
+                f32 mx = (f32)mouse_get_delta_x();
+                f32 my = (f32)mouse_get_delta_y();
+                f32 sx = cfg_mouse_sens_x * 0.022f;
+                f32 sy = cfg_mouse_sens_y * 0.022f;
+                if (!(classic || in_flight))
+                    fp_yaw -= mx * sx;
+                if (fly_state != BS_EGG_HEAD && fly_state != BS_EGG_ASS)
+                    fp_pitch += (cfg_mouse_invert_y ? -my : my) * sy;
+            }
         }
     }
 
