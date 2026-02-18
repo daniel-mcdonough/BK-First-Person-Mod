@@ -92,6 +92,7 @@ EXPORT uint32_t recomp_api_version = 1;
 static Display *dpy;              /* X11 connection (opened once)       */
 static Cursor   arrow_cursor;    /* standard arrow cursor for restoring */
 static Window   cached_focus_win; /* last known focused window          */
+static Window   game_window;     /* game window ID (set on first capture) */
 static int      delta_x, delta_y; /* last-frame mouse deltas            */
 static int      fp_wants_mouse;   /* MIPS sets this on FP enter/exit    */
 static int      user_paused;      /* toggled by "2" key                 */
@@ -111,6 +112,7 @@ static volatile int cursor_hidden; /* have we called ShowCursor(FALSE)? */
 static volatile uint64_t last_poll_ms; /* timestamp of last poll (ms)   */
 static HANDLE   watchdog_thread;
 static volatile int watchdog_running;
+static HWND     game_hwnd;        /* game window (set on first capture) */
 #endif
 
 /* ------------------------------------------------------------------ */
@@ -151,6 +153,7 @@ static void mouse_init(void) {
 
     arrow_cursor = XCreateFontCursor(dpy, XC_left_ptr);
     cached_focus_win = None;
+    game_window = None;
     delta_x = 0;
     delta_y = 0;
     fp_wants_mouse = 0;
@@ -291,6 +294,13 @@ static void do_mouse_poll(void) {
         show_cursor();
         return;
     }
+
+    /* Only capture when the game window has focus */
+    if (game_window != None && focus_win != game_window) {
+        captured = 0;
+        show_cursor();
+        return;
+    }
     cached_focus_win = focus_win;
 
     if (!should_capture) {
@@ -329,6 +339,7 @@ static void do_mouse_poll(void) {
 
     XFlush(dpy);
     captured = 1;
+    game_window = focus_win;
 }
 
 static void do_mouse_set_enabled(int enabled) {
@@ -384,6 +395,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
         captured = 0;
         cursor_hidden = 0;
         last_poll_ms = 0;
+        game_hwnd = NULL;
         watchdog_running = 1;
         watchdog_thread = CreateThread(NULL, 0, watchdog_func_win32, NULL, 0, NULL);
         break;
@@ -474,6 +486,13 @@ static void do_mouse_poll_win32(void) {
         return;
     }
 
+    /* Only capture when the game window has focus */
+    if (game_hwnd && hwnd != game_hwnd) {
+        captured = 0;
+        show_cursor_win32();
+        return;
+    }
+
     if (!should_capture) {
         captured = 0;
         show_cursor_win32();
@@ -509,6 +528,7 @@ static void do_mouse_poll_win32(void) {
     hide_cursor_win32();
 
     captured = 1;
+    game_hwnd = hwnd;
 }
 
 static void do_mouse_set_enabled_win32(int enabled) {
