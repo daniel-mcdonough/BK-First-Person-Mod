@@ -11,7 +11,8 @@ dependencies = []
 optional_dependencies = []
 native_libraries = [ { name = "bk_mouse_input", funcs = [
     "mouse_poll", "mouse_get_delta_x", "mouse_get_delta_y",
-    "mouse_set_enabled", "mouse_is_enabled", "mouse_is_captured"
+    "mouse_set_enabled", "mouse_is_enabled", "mouse_is_captured",
+    "mouse_force_show_cursor"
 ] } ]
 
 [inputs]

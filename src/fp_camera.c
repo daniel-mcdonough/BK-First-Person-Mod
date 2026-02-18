@@ -44,6 +44,7 @@ RECOMP_IMPORT(".", int  mouse_get_delta_y(void));
 RECOMP_IMPORT(".", void mouse_set_enabled(int enabled));
 RECOMP_IMPORT(".", int  mouse_is_enabled(void));
 RECOMP_IMPORT(".", int  mouse_is_captured(void));
+RECOMP_IMPORT(".", void mouse_force_show_cursor(void));
 
 /* Player model rotation (degrees, used by renderer — captures full rolls/flips) */
 f32  pitch_get(void);
@@ -324,12 +325,13 @@ RECOMP_PATCH int bainput_should_look_first_person_camera(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* HOOK (before) — gcpausemenu_draw: release mouse during pause screen */
+/* HOOK — gcpausemenu_draw: force visible cursor during pause screen   */
 /* ------------------------------------------------------------------ */
 
 RECOMP_HOOK("gcpausemenu_draw") void on_pause_menu_draw(void) {
-    if (fp_active && mouse_is_enabled()) {
+    if (fp_active && !gcpausemenu_80314B00()) {
         mouse_set_enabled(0);
+        mouse_force_show_cursor();
     }
 }
 
@@ -386,6 +388,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     /* Release mouse when game pause menu is open */
     if (!gcpausemenu_80314B00()) {
         mouse_set_enabled(0);
+        mouse_force_show_cursor();
         return;
     } else if (!mouse_is_enabled()) {
         /* Re-enable mouse when returning from pause */

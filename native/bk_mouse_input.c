@@ -74,10 +74,6 @@ typedef struct {
   #include <windows.h>
 #endif
 
-/* Watchdog interval and threshold (ms) */
-#define WATCHDOG_INTERVAL_MS  100
-#define WATCHDOG_THRESHOLD_MS 200
-
 /* ------------------------------------------------------------------ */
 /* Recomp native API version (required by the mod loader)              */
 /* ------------------------------------------------------------------ */
@@ -92,14 +88,13 @@ EXPORT uint32_t recomp_api_version = 1;
 static Display *dpy;              /* X11 connection (opened once)       */
 static Cursor   arrow_cursor;    /* standard arrow cursor for restoring */
 static Window   cached_focus_win; /* last known focused window          */
-static Window   game_window;     /* game window ID (set on first capture) */
 static int      delta_x, delta_y; /* last-frame mouse deltas            */
 static int      fp_wants_mouse;   /* MIPS sets this on FP enter/exit    */
 static int      user_paused;      /* toggled by "2" key                 */
 static int      esc_paused;       /* toggled by Escape key (menu open)  */
 static int      captured;         /* currently capturing? (composite)   */
-static volatile int cursor_hidden; /* is cursor hidden via XFixes?      */
-static volatile uint64_t last_poll_ms; /* timestamp of last poll (ms)   */
+static int      cursor_hidden;    /* is cursor hidden via XFixes?       */
+static uint64_t last_poll_ms;     /* timestamp of last poll (ms)        */
 static pthread_t watchdog_thread;
 static volatile int watchdog_running;
 #elif defined(_WIN32)
@@ -108,30 +103,31 @@ static int      fp_wants_mouse;   /* MIPS sets this on FP enter/exit    */
 static int      user_paused;      /* toggled by "2" key                 */
 static int      esc_paused;       /* toggled by Escape key (menu open)  */
 static int      captured;         /* currently capturing? (composite)   */
-static volatile int cursor_hidden; /* have we called ShowCursor(FALSE)? */
-static volatile uint64_t last_poll_ms; /* timestamp of last poll (ms)   */
-static HANDLE   watchdog_thread;
-static volatile int watchdog_running;
-static HWND     game_hwnd;        /* game window (set on first capture) */
+static int      cursor_hidden;    /* have we called ShowCursor(FALSE)?  */
+static uint64_t last_poll_ms;     /* timestamp of last poll (ms)        */
 #endif
 
 /* ------------------------------------------------------------------ */
-/* Lifecycle: open/close X11 display                                   */
+/* Lifecycle                                                           */
 /* ------------------------------------------------------------------ */
 
 #ifdef __linux__
 
-/* Watchdog: show cursor if mouse_poll hasn't been called recently */
+/* Watchdog interval and threshold (ms) */
+#define WATCHDOG_INTERVAL_MS  100
+#define WATCHDOG_THRESHOLD_MS 200
+
+/* Watchdog: show cursor if mouse_poll hasn't been called recently.
+ * Runs on a background thread; requires XInitThreads(). */
 static void *watchdog_func(void *arg) {
     (void)arg;
     while (watchdog_running) {
         usleep(WATCHDOG_INTERVAL_MS * 1000);
         if (!dpy || !cursor_hidden || !fp_wants_mouse)
             continue;
-        uint64_t now;
         struct timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
-        now = (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
+        uint64_t now = (uint64_t)ts.tv_sec * 1000 + (uint64_t)ts.tv_nsec / 1000000;
         if (last_poll_ms != 0 && (now - last_poll_ms) > WATCHDOG_THRESHOLD_MS) {
             XFixesShowCursor(dpy, DefaultRootWindow(dpy));
             if (cached_focus_win && arrow_cursor)
@@ -153,7 +149,6 @@ static void mouse_init(void) {
 
     arrow_cursor = XCreateFontCursor(dpy, XC_left_ptr);
     cached_focus_win = None;
-    game_window = None;
     delta_x = 0;
     delta_y = 0;
     fp_wants_mouse = 0;
@@ -189,13 +184,11 @@ static void mouse_shutdown(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Internal: cursor show/hide via XFixes (server-level, not overridable) */
+/* Internal: cursor show/hide                                          */
 /* ------------------------------------------------------------------ */
 
 static void hide_cursor(void) {
     if (!cursor_hidden) {
-        if (cached_focus_win)
-            XUndefineCursor(dpy, cached_focus_win);
         XFixesHideCursor(dpy, DefaultRootWindow(dpy));
         XFlush(dpy);
         cursor_hidden = 1;
@@ -205,13 +198,23 @@ static void hide_cursor(void) {
 static void show_cursor(void) {
     if (cursor_hidden) {
         XFixesShowCursor(dpy, DefaultRootWindow(dpy));
-        /* Also set a real arrow cursor on the game window to override
-         * any blank/transparent cursor set by the runtime (SDL) */
-        if (cached_focus_win && arrow_cursor)
-            XDefineCursor(dpy, cached_focus_win, arrow_cursor);
         XFlush(dpy);
         cursor_hidden = 0;
     }
+}
+
+/* Force-show cursor with a real arrow image (overrides SDL's blank cursor).
+ * Called from MIPS hooks every frame during pause menus. */
+static void do_mouse_force_show_cursor(void) {
+    if (!dpy)
+        return;
+    if (cursor_hidden) {
+        XFixesShowCursor(dpy, DefaultRootWindow(dpy));
+        cursor_hidden = 0;
+    }
+    if (cached_focus_win && arrow_cursor)
+        XDefineCursor(dpy, cached_focus_win, arrow_cursor);
+    XFlush(dpy);
 }
 
 /* ------------------------------------------------------------------ */
@@ -294,13 +297,6 @@ static void do_mouse_poll(void) {
         show_cursor();
         return;
     }
-
-    /* Only capture when the game window has focus */
-    if (game_window != None && focus_win != game_window) {
-        captured = 0;
-        show_cursor();
-        return;
-    }
     cached_focus_win = focus_win;
 
     if (!should_capture) {
@@ -339,7 +335,6 @@ static void do_mouse_poll(void) {
 
     XFlush(dpy);
     captured = 1;
-    game_window = focus_win;
 }
 
 static void do_mouse_set_enabled(int enabled) {
@@ -367,22 +362,6 @@ static void do_mouse_set_enabled(int enabled) {
 /* Lifecycle: DllMain                                                  */
 /* ------------------------------------------------------------------ */
 
-/* Watchdog: show cursor if mouse_poll hasn't been called recently */
-static DWORD WINAPI watchdog_func_win32(LPVOID arg) {
-    (void)arg;
-    while (watchdog_running) {
-        Sleep(WATCHDOG_INTERVAL_MS);
-        if (!cursor_hidden || !fp_wants_mouse)
-            continue;
-        uint64_t now = (uint64_t)GetTickCount64();
-        if (last_poll_ms != 0 && (now - last_poll_ms) > WATCHDOG_THRESHOLD_MS) {
-            ShowCursor(TRUE);
-            cursor_hidden = 0;
-        }
-    }
-    return 0;
-}
-
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
     (void)hinstDLL; (void)lpvReserved;
     switch (fdwReason) {
@@ -395,17 +374,8 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
         captured = 0;
         cursor_hidden = 0;
         last_poll_ms = 0;
-        game_hwnd = NULL;
-        watchdog_running = 1;
-        watchdog_thread = CreateThread(NULL, 0, watchdog_func_win32, NULL, 0, NULL);
         break;
     case DLL_PROCESS_DETACH:
-        watchdog_running = 0;
-        if (watchdog_thread) {
-            WaitForSingleObject(watchdog_thread, 1000);
-            CloseHandle(watchdog_thread);
-            watchdog_thread = NULL;
-        }
         if (cursor_hidden) {
             ShowCursor(TRUE);
             cursor_hidden = 0;
@@ -486,13 +456,6 @@ static void do_mouse_poll_win32(void) {
         return;
     }
 
-    /* Only capture when the game window has focus */
-    if (game_hwnd && hwnd != game_hwnd) {
-        captured = 0;
-        show_cursor_win32();
-        return;
-    }
-
     if (!should_capture) {
         captured = 0;
         show_cursor_win32();
@@ -528,7 +491,6 @@ static void do_mouse_poll_win32(void) {
     hide_cursor_win32();
 
     captured = 1;
-    game_hwnd = hwnd;
 }
 
 static void do_mouse_set_enabled_win32(int enabled) {
@@ -605,5 +567,16 @@ EXPORT void mouse_is_captured(uint8_t* rdram, recomp_context* ctx) {
     ctx->r2 = (int32_t)captured;
 #else
     ctx->r2 = 0;
+#endif
+}
+
+/* Force-show the cursor with a visible arrow image.
+ * Called from MIPS pause menu hooks every frame to override SDL's blank cursor. */
+EXPORT void mouse_force_show_cursor(uint8_t* rdram, recomp_context* ctx) {
+    (void)rdram; (void)ctx;
+#if defined(__linux__)
+    do_mouse_force_show_cursor();
+#elif defined(_WIN32)
+    show_cursor_win32();
 #endif
 }
