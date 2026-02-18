@@ -32,6 +32,7 @@ f32  ml_sin_deg(f32 deg);
 f32  ml_cos_deg(f32 deg);
 f32  viewport_getFOVy(void);
 void viewport_setFOVy(f32 fovy);
+int  gcpausemenu_80314B00(void);  /* returns 0 when pause menu is open */
 
 /* ------------------------------------------------------------------ */
 /* Native mouse input library (imported from own mod's native .so)     */
@@ -323,6 +324,16 @@ RECOMP_PATCH int bainput_should_look_first_person_camera(void) {
 }
 
 /* ------------------------------------------------------------------ */
+/* HOOK (before) — gcpausemenu_draw: release mouse during pause screen */
+/* ------------------------------------------------------------------ */
+
+RECOMP_HOOK("gcpausemenu_draw") void on_pause_menu_draw(void) {
+    if (fp_active && mouse_is_enabled()) {
+        mouse_set_enabled(0);
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* HOOK (before) — ncDynamicCamera_update                              */
 /* ------------------------------------------------------------------ */
 
@@ -371,6 +382,15 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
 
     if (!fp_active)
         return;
+
+    /* Release mouse when game pause menu is open */
+    if (!gcpausemenu_80314B00()) {
+        mouse_set_enabled(0);
+        return;
+    } else if (!mouse_is_enabled()) {
+        /* Re-enable mouse when returning from pause */
+        mouse_set_enabled(1);
+    }
 
     head_tracking = (s32)recomp_get_config_u32("head_tracking");
 
