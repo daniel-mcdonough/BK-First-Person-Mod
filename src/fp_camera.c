@@ -160,6 +160,9 @@ static f32 fp_prev_yaw;              /* previous frame yaw for turn rate   */
 static f32 fp_saved_fov;             /* original FOV to restore on exit    */
 static s32 fp_restore_after_transition; /* re-enter FP when transition ends */
 static f32 fp_restore_pitch;         /* saved pitch for transition restore */
+static s32 fp_was_in_water;          /* previous frame water state         */
+static s32 fp_water_exit_frames;     /* frames since leaving water         */
+static s32 fp_effective_water;       /* combined waterState + swim anim    */
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -321,6 +324,9 @@ RECOMP_CALLBACK("*", recomp_on_init) void on_init(void) {
     fp_saved_fov           = 0.0f;
     fp_restore_after_transition = 0;
     fp_restore_pitch       = 0.0f;
+    fp_was_in_water        = 0;
+    fp_water_exit_frames   = 0;
+    fp_effective_water     = 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -384,10 +390,7 @@ RECOMP_HOOK("ncDynamicCamera_update") void before_camera_update(void) {
             s32 state = bs_getState();
             s32 in_flight = (state == BS_FLY || state == BS_BOMB
                           || state == BS_BEE_FLY);
-            s32 in_water = (state == BS_SWIM_IDLE || state == BS_SWIM
-                         || state == BS_DIVE_IDLE || state == BS_DIVE
-                         || state == BS_DIVE_ENTER);
-            if (can_view_first_person() || in_flight || in_water) {
+            if (can_view_first_person() || in_flight || player_getWaterState() != 0) {
                 fp_enter();
             }
         } else {
@@ -412,6 +415,8 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     f32 cfg_croc_height, cfg_croc_fwd, cfg_walrus_height, cfg_walrus_fwd;
     f32 cfg_bee_height, cfg_bee_fwd;
     f32 cfg_boots_height, cfg_boots_fwd;
+    f32 cfg_swim_surface_height, cfg_swim_surface_fwd;
+    f32 cfg_swim_under_height, cfg_swim_under_fwd;
     f32 cfg_banjo_bob_amount;
     f32 cfg_banjo_roll;
     f32 cfg_banjo_pitch;
@@ -453,6 +458,10 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     cfg_bee_fwd        = (f32)recomp_get_config_double("bee_forward");
     cfg_boots_height   = (f32)recomp_get_config_double("boots_height");
     cfg_boots_fwd      = (f32)recomp_get_config_double("boots_forward");
+    cfg_swim_surface_height = (f32)recomp_get_config_double("swim_surface_height");
+    cfg_swim_surface_fwd    = (f32)recomp_get_config_double("swim_surface_forward");
+    cfg_swim_under_height   = (f32)recomp_get_config_double("swim_under_height");
+    cfg_swim_under_fwd      = (f32)recomp_get_config_double("swim_under_forward");
     cfg_banjo_bob_amount = (f32)recomp_get_config_double("banjo_bob");
     cfg_banjo_roll       = (f32)recomp_get_config_double("banjo_roll");
     cfg_banjo_pitch      = (f32)recomp_get_config_double("banjo_pitch");
@@ -468,6 +477,17 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         return;
     }
 
+    /* --- compute effective water state (require both waterState AND swim animation) --- */
+    {
+        s32 raw_water = player_getWaterState();
+        s32 st = bs_getState();
+        s32 in_swim_anim = (st == BS_SWIM_IDLE || st == BS_SWIM
+                         || st == BS_DIVE_IDLE || st == BS_DIVE
+                         || st == BS_DIVE_ENTER);
+        /* Only treat as swimming if both the game's water flag and animation agree */
+        fp_effective_water = (raw_water != 0 && in_swim_anim) ? raw_water : 0;
+    }
+
     /* --- look rotation from right stick (C-buttons) --- */
     dt = time_getDelta();
 
@@ -476,9 +496,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         s32 fly_state = bs_getState();
         s32 in_flight = (player_getTransformation() == TRANSFORM_BEE && fly_state == BS_BEE_FLY)
                      || fly_state == BS_FLY || fly_state == BS_BOMB;
-        s32 in_swim = (fly_state == BS_SWIM_IDLE || fly_state == BS_SWIM
-                    || fly_state == BS_DIVE_IDLE || fly_state == BS_DIVE
-                    || fly_state == BS_DIVE_ENTER);
+        s32 in_swim = (fp_effective_water != 0);
 
         if (classic || in_flight) {
             /* Classic / flight: camera yaw locked to player facing direction */
@@ -514,13 +532,15 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
             }
         }
 
-        /* Swimming: spring yaw back toward player facing direction */
-        if (in_swim) {
+        /* Underwater: spring yaw and pitch back toward player direction.
+         * Surface swimming gets free look like normal movement. */
+        if (fp_effective_water == 2) {
             f32 target_yaw = player_getYaw();
             f32 yaw_diff = target_yaw - fp_yaw;
             if (yaw_diff > 180.0f) yaw_diff -= 360.0f;
             if (yaw_diff < -180.0f) yaw_diff += 360.0f;
             fp_yaw += yaw_diff * 4.0f * dt;
+            fp_pitch += (0.0f - fp_pitch) * 4.0f * dt;
         }
     }
 
@@ -528,14 +548,10 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
     fp_pitch = fp_clamp(fp_pitch, FP_PITCH_MIN, FP_PITCH_MAX);
 
     /* --- model visibility (game re-enables it each frame) --- */
-    {
-        s32 vis_state = bs_getState();
-        s32 swimming = (vis_state == BS_SWIM_IDLE || vis_state == BS_SWIM
-                     || vis_state == BS_DIVE_IDLE || vis_state == BS_DIVE
-                     || vis_state == BS_DIVE_ENTER);
-        if (!head_tracking || swimming)
-            player_setModelVisible(0);
-    }
+    /* With head_tracking ON, always keep model visible so bone system stays active.
+     * With head_tracking OFF, always hide (camera is at eye level, model not needed). */
+    if (!head_tracking)
+        player_setModelVisible(0);
 
     /* --- align player to camera during egg states so eggs fire where you look --- */
     {
@@ -546,6 +562,17 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         }
     }
 
+    /* --- track water exit for bone stabilization --- */
+    {
+        s32 in_water_now = (fp_effective_water != 0);
+        if (fp_was_in_water && !in_water_now && fp_water_exit_frames == 0) {
+            fp_water_exit_frames = 15;   /* ~0.5 sec — bone validation catches stragglers */
+        }
+        if (fp_water_exit_frames > 0)
+            fp_water_exit_frames--;
+        fp_was_in_water = in_water_now;
+    }
+
     /* --- compute eye position --- */
     if (head_tracking) {
         f32 alpha;
@@ -554,11 +581,38 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         s32 uses_bone_y = 0;
         f32 smooth_speed = FP_BOB_SMOOTH;
         u32 xform = player_getTransformation();
+        s32 water_state = fp_effective_water;
         f32 player_pos[3];
 
         player_getPosition(player_pos);
 
-        if (xform == TRANSFORM_BEE) {
+        /* Surface swimming: use head bone for X/Z tracking (follows swim lean),
+         * height from player pos.  Falls back to player pos if bone is stale. */
+        if (water_state == 1) {
+            f32 bone_dx, bone_dz;
+            baModel_802924E8(eye_pos);
+            bone_dx = eye_pos[0] - player_pos[0];
+            bone_dz = eye_pos[2] - player_pos[2];
+            if (bone_dx * bone_dx + bone_dz * bone_dz > 40000.0f) {
+                /* Bone stale — fall back to player pos */
+                eye_pos[0] = player_pos[0];
+                eye_pos[2] = player_pos[2];
+            }
+            eye_pos[0] += ml_sin_deg(fp_yaw) * cfg_swim_surface_fwd;
+            eye_pos[1] = player_pos[1] + cfg_swim_surface_height;
+            eye_pos[2] += ml_cos_deg(fp_yaw) * cfg_swim_surface_fwd;
+        } else if (water_state == 2) {
+            eye_pos[0] = player_pos[0] + ml_sin_deg(fp_yaw) * cfg_swim_under_fwd;
+            eye_pos[1] = player_pos[1] + cfg_swim_under_height;
+            eye_pos[2] = player_pos[2] + ml_cos_deg(fp_yaw) * cfg_swim_under_fwd;
+        } else if (fp_water_exit_frames > 0) {
+            /* Transition from water: use player pos to avoid stale bones,
+             * and keep fp_smooth_y tracking so bone handoff is seamless */
+            eye_pos[0] = player_pos[0] + ml_sin_deg(fp_yaw) * cfg_banjo_fwd;
+            eye_pos[1] = player_pos[1] + cfg_banjo_height;
+            eye_pos[2] = player_pos[2] + ml_cos_deg(fp_yaw) * cfg_banjo_fwd;
+            fp_smooth_y = eye_pos[1];
+        } else if (xform == TRANSFORM_BEE) {
             /* Bee: no usable bones, use player pos + offset */
             player_getPosition(eye_pos);
             eye_pos[0] += ml_sin_deg(fp_yaw) * cfg_bee_fwd;
@@ -573,7 +627,23 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
             eye_pos[2] += ml_cos_deg(fp_yaw) * cfg_pumpkin_fwd;
             uses_synth_bob = 1;
         } else {
+            f32 bone_dx, bone_dz;
             baModel_802924E8(eye_pos);           /* animated head bone (X/Z tracking) */
+
+            /* Validate bone X/Z — if too far from player, bones are stale
+             * (happens after water exit animations, transformations, etc.) */
+            bone_dx = eye_pos[0] - player_pos[0];
+            bone_dz = eye_pos[2] - player_pos[2];
+            if (bone_dx * bone_dx + bone_dz * bone_dz > 40000.0f) {
+                /* > 200 units away: snap to player pos */
+                eye_pos[0] = player_pos[0];
+                eye_pos[2] = player_pos[2];
+            }
+            /* If bone Y is far below player feet, it's stale */
+            if (eye_pos[1] < player_pos[1] - 50.0f) {
+                eye_pos[1] = player_pos[1];
+                fp_smooth_y = player_pos[1] + cfg_banjo_height;
+            }
 
             if (xform == TRANSFORM_TERMITE) {
                 eye_pos[1] = player_pos[1] + cfg_termite_height;
@@ -621,17 +691,6 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                     eye_pos[0] += ml_sin_deg(fp_yaw) * cfg_flight_fwd;
                     eye_pos[2] += ml_cos_deg(fp_yaw) * cfg_flight_fwd;
                     uses_bone_y = 1;
-                } else if (st == BS_SWIM_IDLE || st == BS_SWIM) {
-                    /* Surface swimming: camera at water level */
-                    eye_pos[1] = player_pos[1] + 100.0f;
-                    eye_pos[0] = player_pos[0] + ml_sin_deg(fp_yaw) * 20.0f;
-                    eye_pos[2] = player_pos[2] + ml_cos_deg(fp_yaw) * 20.0f;
-                } else if (st == BS_DIVE_IDLE || st == BS_DIVE
-                        || st == BS_DIVE_ENTER) {
-                    /* Underwater: camera follows player with forward offset */
-                    eye_pos[1] = player_pos[1] + 80.0f;
-                    eye_pos[0] = player_pos[0] + ml_sin_deg(fp_yaw) * 20.0f;
-                    eye_pos[2] = player_pos[2] + ml_cos_deg(fp_yaw) * 20.0f;
                 } else {
                     /* Banjo default: bone-tracked with configurable smoothing */
                     eye_pos[1] += FP_EYE_Y_BOOST + 5.0f;
@@ -714,17 +773,16 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         }
     } else {
         u32 xform = player_getTransformation();
-        s32 swim_st = bs_getState();
+        s32 water_st = fp_effective_water;
         player_getPosition(eye_pos);
-        if (swim_st == BS_SWIM_IDLE || swim_st == BS_SWIM) {
-            eye_pos[1] += 100.0f;
-            eye_pos[0] += ml_sin_deg(fp_yaw) * 20.0f;
-            eye_pos[2] += ml_cos_deg(fp_yaw) * 20.0f;
-        } else if (swim_st == BS_DIVE_IDLE || swim_st == BS_DIVE
-                || swim_st == BS_DIVE_ENTER) {
-            eye_pos[1] += 80.0f;
-            eye_pos[0] += ml_sin_deg(fp_yaw) * 20.0f;
-            eye_pos[2] += ml_cos_deg(fp_yaw) * 20.0f;
+        if (water_st == 1) {
+            eye_pos[1] += cfg_swim_surface_height;
+            eye_pos[0] += ml_sin_deg(fp_yaw) * cfg_swim_surface_fwd;
+            eye_pos[2] += ml_cos_deg(fp_yaw) * cfg_swim_surface_fwd;
+        } else if (water_st == 2) {
+            eye_pos[1] += cfg_swim_under_height;
+            eye_pos[0] += ml_sin_deg(fp_yaw) * cfg_swim_under_fwd;
+            eye_pos[2] += ml_cos_deg(fp_yaw) * cfg_swim_under_fwd;
         } else {
             switch (xform) {
                 case TRANSFORM_TERMITE: eye_pos[1] += cfg_termite_height; break;
@@ -744,9 +802,7 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         s32 bee_flying = (player_getTransformation() == TRANSFORM_BEE
                           && fly_st == BS_BEE_FLY);
         s32 banjo_flying = (fly_st == BS_FLY || fly_st == BS_BOMB);
-        s32 swimming = (fly_st == BS_SWIM_IDLE || fly_st == BS_SWIM
-                     || fly_st == BS_DIVE_IDLE || fly_st == BS_DIVE
-                     || fly_st == BS_DIVE_ENTER);
+        s32 swimming = (fp_effective_water != 0);
         f32 model_pitch = pitch_get();
         /* Convert 0-360 range to signed ±180 */
         if (model_pitch > 180.0f) model_pitch -= 360.0f;
