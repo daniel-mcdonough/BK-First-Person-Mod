@@ -90,7 +90,6 @@ static Cursor   arrow_cursor;    /* standard arrow cursor for restoring */
 static Window   cached_focus_win; /* last known focused window          */
 static int      delta_x, delta_y; /* last-frame mouse deltas            */
 static int      fp_wants_mouse;   /* MIPS sets this on FP enter/exit    */
-static int      user_paused;      /* toggled by "2" key                 */
 static int      esc_paused;       /* toggled by Escape key (menu open)  */
 static int      captured;         /* currently capturing? (composite)   */
 static int      cursor_hidden;    /* is cursor hidden via XFixes?       */
@@ -100,7 +99,6 @@ static volatile int watchdog_running;
 #elif defined(_WIN32)
 static int      delta_x, delta_y; /* last-frame mouse deltas            */
 static int      fp_wants_mouse;   /* MIPS sets this on FP enter/exit    */
-static int      user_paused;      /* toggled by "2" key                 */
 static int      esc_paused;       /* toggled by Escape key (menu open)  */
 static int      captured;         /* currently capturing? (composite)   */
 static int      cursor_hidden;    /* have we called ShowCursor(FALSE)?  */
@@ -152,7 +150,6 @@ static void mouse_init(void) {
     delta_x = 0;
     delta_y = 0;
     fp_wants_mouse = 0;
-    user_paused = 0;
     esc_paused = 0;
     captured = 0;
     cursor_hidden = 0;
@@ -220,13 +217,11 @@ static void do_mouse_force_show_cursor(void) {
 /* ------------------------------------------------------------------ */
 /* Key constants (X11 keycodes)                                        */
 /* ------------------------------------------------------------------ */
-#define KEY_2_KEYCODE    11   /* XK_2 on most keymaps; row-0 digit "2"   */
 #define KEY_ESC_KEYCODE   9   /* Escape key X11 keycode                  */
 
 /* Time gap threshold (ms) — if poll gap exceeds this, game was paused */
 #define ESC_GAP_THRESHOLD_MS 200
 
-static int key2_was_down;
 static int esc_was_down;
 
 static uint64_t get_time_ms_linux(void) {
@@ -262,25 +257,15 @@ static void do_mouse_poll(void) {
         esc_paused = 0;
     last_poll_ms = now;
 
-    /* Check key toggles (rising edge) */
+    /* Check Escape key toggle (rising edge, for Recomp menu) */
     {
         char keys[32];
-        int byte_idx = KEY_2_KEYCODE / 8;
-        int bit_idx  = KEY_2_KEYCODE % 8;
-        int down;
         int esc_byte = KEY_ESC_KEYCODE / 8;
         int esc_bit  = KEY_ESC_KEYCODE % 8;
         int esc_down;
 
         XQueryKeymap(dpy, keys);
 
-        /* "2" key toggle */
-        down = (keys[byte_idx] >> bit_idx) & 1;
-        if (down && !key2_was_down)
-            user_paused = !user_paused;
-        key2_was_down = down;
-
-        /* Escape key toggle (for Recomp menu) */
         esc_down = (keys[esc_byte] >> esc_bit) & 1;
         if (esc_down && !esc_was_down)
             esc_paused = !esc_paused;
@@ -288,7 +273,7 @@ static void do_mouse_poll(void) {
     }
 
     /* Composite capture decision */
-    should_capture = fp_wants_mouse && !user_paused && !esc_paused;
+    should_capture = fp_wants_mouse && !esc_paused;
 
     /* Get focused window */
     XGetInputFocus(dpy, &focus_win, &revert);
@@ -341,7 +326,6 @@ static void do_mouse_set_enabled(int enabled) {
     fp_wants_mouse = enabled;
     if (!enabled) {
         captured = 0;
-        user_paused = 0;
         esc_paused = 0;
         delta_x = 0;
         delta_y = 0;
@@ -369,7 +353,6 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
         delta_x = 0;
         delta_y = 0;
         fp_wants_mouse = 0;
-        user_paused = 0;
         esc_paused = 0;
         captured = 0;
         cursor_hidden = 0;
@@ -407,7 +390,6 @@ static void show_cursor_win32(void) {
 /* Key toggle state                                                    */
 /* ------------------------------------------------------------------ */
 
-static int key2_was_down;
 static int esc_was_down;
 
 /* Time gap threshold (ms) */
@@ -422,7 +404,7 @@ static void do_mouse_poll_win32(void) {
     RECT rect;
     POINT center, cursor;
     int should_capture;
-    int key_down, esc_down;
+    int esc_down;
     uint64_t now;
 
     delta_x = 0;
@@ -434,19 +416,13 @@ static void do_mouse_poll_win32(void) {
         esc_paused = 0;
     last_poll_ms = now;
 
-    /* Check "2" key toggle (rising edge) — VK key code 0x32 */
-    key_down = (GetAsyncKeyState(0x32) & 0x8000) != 0;
-    if (key_down && !key2_was_down)
-        user_paused = !user_paused;
-    key2_was_down = key_down;
-
     /* Escape key toggle (rising edge, for Recomp menu) */
     esc_down = (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
     if (esc_down && !esc_was_down)
         esc_paused = !esc_paused;
     esc_was_down = esc_down;
 
-    should_capture = fp_wants_mouse && !user_paused && !esc_paused;
+    should_capture = fp_wants_mouse && !esc_paused;
 
     /* Get the foreground (focused) window */
     hwnd = GetForegroundWindow();
@@ -497,7 +473,6 @@ static void do_mouse_set_enabled_win32(int enabled) {
     fp_wants_mouse = enabled;
     if (!enabled) {
         captured = 0;
-        user_paused = 0;
         esc_paused = 0;
         delta_x = 0;
         delta_y = 0;

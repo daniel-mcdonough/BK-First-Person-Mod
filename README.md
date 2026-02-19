@@ -5,6 +5,17 @@ A mod for Banjo-Kazooie Recompiled that adds a toggled first-person camera with 
 
 ## Changelog
 
+### 0.5.0
+
+- First-person swimming (surface and underwater) with spring-back camera
+- Auto-restore first person after going through doors / map transitions
+
+### 0.4.0
+
+- Mouse look support (Linux & Windows) with configurable sensitivity and invert Y
+- Cursor automatically released during pause and recomp menus
+- Windows native library (.dll) support
+
 ### 0.3.1
 
 - Default Banjo forward camera to 15
@@ -58,8 +69,7 @@ Custom camera positioning and synthetic animations for all transformations:
 ### Notes
 
 Automatically exits first-person when:
-- Changing maps
-- Entering water
+- Changing maps (auto-restores after the transition)
 - Transforming
 - Dying
 
@@ -83,7 +93,6 @@ You can see parts of the character model when moving independently of the camera
 
 ## TODO
 
-- First person swimming
 - Locked first person? Not sure if this is possible.
 - More testing in different situations
 

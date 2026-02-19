@@ -84,6 +84,12 @@ s32  bastick_getZone(void);
 #define BS_LONGLEG_JUMP  0x28
 #define BS_LONGLEG_SLIDE 0x55
 
+#define BS_SWIM_IDLE     0x2D
+#define BS_SWIM          0x2E
+#define BS_DIVE_IDLE     0x2B
+#define BS_DIVE          0x2C
+#define BS_DIVE_ENTER    0x30
+
 /* ------------------------------------------------------------------ */
 /* Tuning constants                                                    */
 /* ------------------------------------------------------------------ */
@@ -288,8 +294,6 @@ static void fp_exit(void) {
 static s32 fp_should_auto_exit(void) {
     if (map_get() != fp_last_map)
         return 1;
-    if (player_getWaterState() != 0)
-        return 1;
     if (player_getTransformation() != fp_last_transformation)
         return 1;
     if (player_isDead())
@@ -342,10 +346,10 @@ RECOMP_HOOK("transitionToMap") void on_transition_start(void) {
 }
 
 /* ------------------------------------------------------------------ */
-/* HOOK_RETURN — func_80295914: restore FP after player spawns         */
+/* HOOK_RETURN — func_802E3E7C: restore FP after transition completes  */
 /* ------------------------------------------------------------------ */
 
-RECOMP_HOOK_RETURN("func_80295914") void on_player_spawned(void) {
+RECOMP_HOOK_RETURN("func_802E3E7C") void on_transition_complete(void) {
     if (fp_restore_after_transition) {
         fp_restore_after_transition = 0;
         fp_enter();
@@ -376,11 +380,14 @@ RECOMP_HOOK("ncDynamicCamera_update") void before_camera_update(void) {
 
     if (toggle_just_pressed) {
         if (!fp_active) {
-            /* Allow entry during flight even if can_view_first_person() says no */
+            /* Allow entry during flight/swimming even if can_view_first_person() says no */
             s32 state = bs_getState();
             s32 in_flight = (state == BS_FLY || state == BS_BOMB
                           || state == BS_BEE_FLY);
-            if (can_view_first_person() || in_flight) {
+            s32 in_water = (state == BS_SWIM_IDLE || state == BS_SWIM
+                         || state == BS_DIVE_IDLE || state == BS_DIVE
+                         || state == BS_DIVE_ENTER);
+            if (can_view_first_person() || in_flight || in_water) {
                 fp_enter();
             }
         } else {
@@ -469,6 +476,9 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         s32 fly_state = bs_getState();
         s32 in_flight = (player_getTransformation() == TRANSFORM_BEE && fly_state == BS_BEE_FLY)
                      || fly_state == BS_FLY || fly_state == BS_BOMB;
+        s32 in_swim = (fly_state == BS_SWIM_IDLE || fly_state == BS_SWIM
+                    || fly_state == BS_DIVE_IDLE || fly_state == BS_DIVE
+                    || fly_state == BS_DIVE_ENTER);
 
         if (classic || in_flight) {
             /* Classic / flight: camera yaw locked to player facing direction */
@@ -503,14 +513,29 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                     fp_pitch += (cfg_mouse_invert_y ? -my : my) * sy;
             }
         }
+
+        /* Swimming: spring yaw back toward player facing direction */
+        if (in_swim) {
+            f32 target_yaw = player_getYaw();
+            f32 yaw_diff = target_yaw - fp_yaw;
+            if (yaw_diff > 180.0f) yaw_diff -= 360.0f;
+            if (yaw_diff < -180.0f) yaw_diff += 360.0f;
+            fp_yaw += yaw_diff * 4.0f * dt;
+        }
     }
 
     fp_yaw   = mlNormalizeAngle(fp_yaw);
     fp_pitch = fp_clamp(fp_pitch, FP_PITCH_MIN, FP_PITCH_MAX);
 
     /* --- model visibility (game re-enables it each frame) --- */
-    if (!head_tracking)
-        player_setModelVisible(0);
+    {
+        s32 vis_state = bs_getState();
+        s32 swimming = (vis_state == BS_SWIM_IDLE || vis_state == BS_SWIM
+                     || vis_state == BS_DIVE_IDLE || vis_state == BS_DIVE
+                     || vis_state == BS_DIVE_ENTER);
+        if (!head_tracking || swimming)
+            player_setModelVisible(0);
+    }
 
     /* --- align player to camera during egg states so eggs fire where you look --- */
     {
@@ -596,6 +621,17 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
                     eye_pos[0] += ml_sin_deg(fp_yaw) * cfg_flight_fwd;
                     eye_pos[2] += ml_cos_deg(fp_yaw) * cfg_flight_fwd;
                     uses_bone_y = 1;
+                } else if (st == BS_SWIM_IDLE || st == BS_SWIM) {
+                    /* Surface swimming: camera at water level */
+                    eye_pos[1] = player_pos[1] + 100.0f;
+                    eye_pos[0] = player_pos[0] + ml_sin_deg(fp_yaw) * 20.0f;
+                    eye_pos[2] = player_pos[2] + ml_cos_deg(fp_yaw) * 20.0f;
+                } else if (st == BS_DIVE_IDLE || st == BS_DIVE
+                        || st == BS_DIVE_ENTER) {
+                    /* Underwater: camera follows player with forward offset */
+                    eye_pos[1] = player_pos[1] + 80.0f;
+                    eye_pos[0] = player_pos[0] + ml_sin_deg(fp_yaw) * 20.0f;
+                    eye_pos[2] = player_pos[2] + ml_cos_deg(fp_yaw) * 20.0f;
                 } else {
                     /* Banjo default: bone-tracked with configurable smoothing */
                     eye_pos[1] += FP_EYE_Y_BOOST + 5.0f;
@@ -678,15 +714,27 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         }
     } else {
         u32 xform = player_getTransformation();
+        s32 swim_st = bs_getState();
         player_getPosition(eye_pos);
-        switch (xform) {
-            case TRANSFORM_TERMITE: eye_pos[1] += cfg_termite_height; break;
-            case TRANSFORM_PUMPKIN: eye_pos[1] += cfg_pumpkin_height; break;
-            case TRANSFORM_CROC:    eye_pos[1] += cfg_croc_height;    break;
-            case TRANSFORM_WALRUS:  eye_pos[1] += cfg_walrus_height;  break;
-            case TRANSFORM_BEE:     eye_pos[1] += cfg_bee_height;     break;
-            case TRANSFORM_WASHUP:  eye_pos[1] += 150.0f;             break;
-            default:                eye_pos[1] += cfg_banjo_height;    break;
+        if (swim_st == BS_SWIM_IDLE || swim_st == BS_SWIM) {
+            eye_pos[1] += 100.0f;
+            eye_pos[0] += ml_sin_deg(fp_yaw) * 20.0f;
+            eye_pos[2] += ml_cos_deg(fp_yaw) * 20.0f;
+        } else if (swim_st == BS_DIVE_IDLE || swim_st == BS_DIVE
+                || swim_st == BS_DIVE_ENTER) {
+            eye_pos[1] += 80.0f;
+            eye_pos[0] += ml_sin_deg(fp_yaw) * 20.0f;
+            eye_pos[2] += ml_cos_deg(fp_yaw) * 20.0f;
+        } else {
+            switch (xform) {
+                case TRANSFORM_TERMITE: eye_pos[1] += cfg_termite_height; break;
+                case TRANSFORM_PUMPKIN: eye_pos[1] += cfg_pumpkin_height; break;
+                case TRANSFORM_CROC:    eye_pos[1] += cfg_croc_height;    break;
+                case TRANSFORM_WALRUS:  eye_pos[1] += cfg_walrus_height;  break;
+                case TRANSFORM_BEE:     eye_pos[1] += cfg_bee_height;     break;
+                case TRANSFORM_WASHUP:  eye_pos[1] += 150.0f;             break;
+                default:                eye_pos[1] += cfg_banjo_height;    break;
+            }
         }
     }
 
@@ -696,12 +744,15 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         s32 bee_flying = (player_getTransformation() == TRANSFORM_BEE
                           && fly_st == BS_BEE_FLY);
         s32 banjo_flying = (fly_st == BS_FLY || fly_st == BS_BOMB);
+        s32 swimming = (fly_st == BS_SWIM_IDLE || fly_st == BS_SWIM
+                     || fly_st == BS_DIVE_IDLE || fly_st == BS_DIVE
+                     || fly_st == BS_DIVE_ENTER);
         f32 model_pitch = pitch_get();
         /* Convert 0-360 range to signed ±180 */
         if (model_pitch > 180.0f) model_pitch -= 360.0f;
 
-        if (bee_flying || banjo_flying) {
-            /* Flight: follow model pitch (inverted) */
+        if (bee_flying || banjo_flying || swimming) {
+            /* Flight / swimming: follow model pitch (inverted) */
             rotation[0] = fp_pitch - model_pitch;
         } else if (head_tracking) {
             if (model_pitch > 10.0f || model_pitch < -10.0f)

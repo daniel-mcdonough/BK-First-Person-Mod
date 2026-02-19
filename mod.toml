@@ -305,10 +305,10 @@ default = 55
 [[manifest.config_options]]
 id = "mouse_enabled"
 name = "Mouse Look"
-description = "Enable mouse look in first-person mode. Press 2 to temporarily release the mouse without exiting FP."
+description = "Enable mouse look in first-person mode."
 type = "Enum"
 options = [ "Off", "On" ]
-default = "On"
+default = "Off"
 
 [[manifest.config_options]]
 id = "mouse_sensitivity_x"
