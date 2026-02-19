@@ -51,6 +51,46 @@ percent = false
 default = 60
 
 [[manifest.config_options]]
+id = "mouse_enabled"
+name = "Mouse Look"
+description = "Enable mouse look in first-person mode."
+type = "Enum"
+options = [ "Off", "On" ]
+default = "Off"
+
+[[manifest.config_options]]
+id = "mouse_sensitivity_x"
+name = "Mouse Sensitivity X (3.0)"
+description = "Horizontal mouse sensitivity."
+type = "Number"
+min = 0.5
+max = 10.0
+step = 0.5
+precision = 1
+percent = false
+default = 3.0
+
+[[manifest.config_options]]
+id = "mouse_sensitivity_y"
+name = "Mouse Sensitivity Y (3.0)"
+description = "Vertical mouse sensitivity."
+type = "Number"
+min = 0.5
+max = 10.0
+step = 0.5
+precision = 1
+percent = false
+default = 3.0
+
+[[manifest.config_options]]
+id = "mouse_invert_y"
+name = "Mouse Invert Y"
+description = "Invert vertical mouse axis."
+type = "Enum"
+options = [ "Off", "On" ]
+default = "Off"
+
+[[manifest.config_options]]
 id = "banjo_height"
 name = "Banjo Height (130)"
 description = "Camera height for Banjo (default form)."
@@ -109,6 +149,54 @@ step = 1
 precision = 0
 percent = false
 default = 5
+
+[[manifest.config_options]]
+id = "swim_surface_height"
+name = "Surface Swim Height (110)"
+description = "Camera height offset for surface swimming."
+type = "Number"
+min = -50
+max = 200
+step = 1
+precision = 0
+percent = false
+default = 110
+
+[[manifest.config_options]]
+id = "swim_surface_forward"
+name = "Surface Swim Forward (20)"
+description = "Camera forward offset for surface swimming."
+type = "Number"
+min = -20
+max = 100
+step = 1
+precision = 0
+percent = false
+default = 20
+
+[[manifest.config_options]]
+id = "swim_under_height"
+name = "Underwater Height (80)"
+description = "Camera height offset for underwater swimming."
+type = "Number"
+min = -50
+max = 200
+step = 1
+precision = 0
+percent = false
+default = 80
+
+[[manifest.config_options]]
+id = "swim_under_forward"
+name = "Underwater Forward (66)"
+description = "Camera forward offset for underwater swimming."
+type = "Number"
+min = -20
+max = 100
+step = 1
+precision = 0
+percent = false
+default = 66
 
 [[manifest.config_options]]
 id = "trot_height"
@@ -301,91 +389,3 @@ step = 1
 precision = 0
 percent = false
 default = 55
-
-[[manifest.config_options]]
-id = "swim_surface_height"
-name = "Surface Swim Height (110)"
-description = "Camera height offset for surface swimming."
-type = "Number"
-min = -50
-max = 200
-step = 1
-precision = 0
-percent = false
-default = 110
-
-[[manifest.config_options]]
-id = "swim_surface_forward"
-name = "Surface Swim Forward (20)"
-description = "Camera forward offset for surface swimming."
-type = "Number"
-min = -20
-max = 100
-step = 1
-precision = 0
-percent = false
-default = 20
-
-[[manifest.config_options]]
-id = "swim_under_height"
-name = "Underwater Height (80)"
-description = "Camera height offset for underwater swimming."
-type = "Number"
-min = -50
-max = 200
-step = 1
-precision = 0
-percent = false
-default = 80
-
-[[manifest.config_options]]
-id = "swim_under_forward"
-name = "Underwater Forward (66)"
-description = "Camera forward offset for underwater swimming."
-type = "Number"
-min = -20
-max = 100
-step = 1
-precision = 0
-percent = false
-default = 66
-
-[[manifest.config_options]]
-id = "mouse_enabled"
-name = "Mouse Look"
-description = "Enable mouse look in first-person mode."
-type = "Enum"
-options = [ "Off", "On" ]
-default = "Off"
-
-[[manifest.config_options]]
-id = "mouse_sensitivity_x"
-name = "Mouse Sensitivity X (3.0)"
-description = "Horizontal mouse sensitivity."
-type = "Number"
-min = 0.5
-max = 10.0
-step = 0.5
-precision = 1
-percent = false
-default = 3.0
-
-[[manifest.config_options]]
-id = "mouse_sensitivity_y"
-name = "Mouse Sensitivity Y (3.0)"
-description = "Vertical mouse sensitivity."
-type = "Number"
-min = 0.5
-max = 10.0
-step = 0.5
-precision = 1
-percent = false
-default = 3.0
-
-[[manifest.config_options]]
-id = "mouse_invert_y"
-name = "Mouse Invert Y"
-description = "Invert vertical mouse axis."
-type = "Enum"
-options = [ "Off", "On" ]
-default = "Off"

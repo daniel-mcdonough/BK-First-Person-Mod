@@ -703,13 +703,19 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         }
 
         /* Smooth Y to dampen walk-cycle bobbing (bone-tracked Y forms only).
-         * Forms using absolute player-position height don't need smoothing. */
+         * Forms using absolute player-position height don't need smoothing.
+         * Clamp prevents camera from floating during falls or sinking on hills.
+         * Tighter downward clamp since falls are fast and disorienting. */
         if (uses_bone_y) {
             if (fp_smooth_y == 0.0f)
                 fp_smooth_y = eye_pos[1];        /* seed on first frame */
             alpha = smooth_speed * dt;
             if (alpha > 1.0f) alpha = 1.0f;
             fp_smooth_y += (eye_pos[1] - fp_smooth_y) * alpha;
+            if (fp_smooth_y < eye_pos[1] - 12.0f)
+                fp_smooth_y = eye_pos[1] - 12.0f;  /* going uphill */
+            if (fp_smooth_y > eye_pos[1] + 5.0f)
+                fp_smooth_y = eye_pos[1] + 5.0f;   /* falling / going downhill */
             eye_pos[1] = fp_smooth_y;
         }
 

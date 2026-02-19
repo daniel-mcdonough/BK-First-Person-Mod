@@ -7,7 +7,10 @@ A mod for Banjo-Kazooie Recompiled that adds a toggled first-person camera with 
 
 ### 0.5.0
 
-- First-person swimming (surface and underwater) with spring-back camera
+- First-person swimming (surface and underwater)
+- Surface swimming: free look with head bone tracking
+- Underwater: spring-back camera locks toward player direction
+- Configurable height and forward offset sliders for surface and underwater swimming
 - Auto-restore first person after going through doors / map transitions
 
 ### 0.4.0
@@ -65,6 +68,8 @@ Custom camera positioning and synthetic animations for all transformations:
 - **Walrus**: Bone-tracked with directional offset
 - **Bee**: Asymmetric idle sway, walking roll tilt, flight locks camera to head.
 - **Washing Machine**: Bone-tracked with idle sway and walking sway with upward arc
+- **Surface Swimming**: Head bone-tracked with free look
+- **Underwater**: Player-position based with spring-back camera
 
 ### Notes
 
@@ -86,6 +91,8 @@ You can see parts of the character model when moving independently of the camera
 - Banjo's original head bobbing locked to his skeleton was so violent, it was unusable. The roll and pitch was very harsh.
 - The bee's idle animation has an asymmetric sway pattern (double/triple-left bounce, single-right). I think this is the only transformation with an asymmetrical animation.
 - During flight (both bee and Banjo), the camera control inverts to match the flight controls.
+- `player_getWaterState()` stays non-zero after the player visually leaves water. Swimming detection requires both `player_getWaterState() != 0` AND an active swim animation state to avoid getting stuck in swimming camera mode.
+- The player model must stay visible during swimming (with head tracking on) or the bone/animation system freezes and doesn't recover until FP is toggled off and on.
 
 
 
