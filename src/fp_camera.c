@@ -89,6 +89,8 @@ s32  bastick_getZone(void);
 #define BS_DIVE_IDLE     0x2B
 #define BS_DIVE          0x2C
 #define BS_DIVE_ENTER    0x30
+#define BS_DIVE_A        0x39  /* A-button dive (fast underwater swim) */
+#define BS_LANDING_IN_WATER 0x4C
 
 /* ------------------------------------------------------------------ */
 /* Tuning constants                                                    */
@@ -483,7 +485,8 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
         s32 st = bs_getState();
         s32 in_swim_anim = (st == BS_SWIM_IDLE || st == BS_SWIM
                          || st == BS_DIVE_IDLE || st == BS_DIVE
-                         || st == BS_DIVE_ENTER);
+                         || st == BS_DIVE_ENTER || st == BS_DIVE_A
+                         || st == BS_LANDING_IN_WATER);
         /* Only treat as swimming if both the game's water flag and animation agree */
         fp_effective_water = (raw_water != 0 && in_swim_anim) ? raw_water : 0;
     }
@@ -539,8 +542,8 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
             f32 yaw_diff = target_yaw - fp_yaw;
             if (yaw_diff > 180.0f) yaw_diff -= 360.0f;
             if (yaw_diff < -180.0f) yaw_diff += 360.0f;
-            fp_yaw += yaw_diff * 4.0f * dt;
-            fp_pitch += (0.0f - fp_pitch) * 4.0f * dt;
+            fp_yaw += yaw_diff * 1.5f * dt;
+            fp_pitch += (0.0f - fp_pitch) * 1.5f * dt;
         }
     }
 
@@ -853,6 +856,13 @@ RECOMP_HOOK_RETURN("ncDynamicCamera_update") void after_camera_update(void) {
             if (roll_alpha > 1.0f) roll_alpha = 1.0f;
             fp_smooth_roll += (target_roll - fp_smooth_roll) * roll_alpha;
             rotation[2] = fp_smooth_roll + fp_synth_roll;
+        } else if (fp_effective_water != 0) {
+            /* Swimming: heavily clamp roll to reduce nausea */
+            f32 target_roll = fp_clamp(fp_get_body_roll(), -3.0f, 3.0f);
+            f32 roll_alpha = FP_BOB_SMOOTH * dt;
+            if (roll_alpha > 1.0f) roll_alpha = 1.0f;
+            fp_smooth_roll += (target_roll - fp_smooth_roll) * roll_alpha;
+            rotation[2] = fp_smooth_roll;
         } else if (head_tracking) {
             f32 target_roll = fp_clamp(fp_get_body_roll(), -cfg_banjo_roll, cfg_banjo_roll);
             f32 roll_alpha = FP_BOB_SMOOTH * dt;
