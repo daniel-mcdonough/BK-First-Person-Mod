@@ -8,10 +8,8 @@ A mod for Banjo-Kazooie Recompiled that adds a toggled first-person camera with 
 ### 0.5.0
 
 - First-person swimming (surface and underwater)
-- Surface swimming: free look with head bone tracking
-- Underwater: spring-back camera locks toward player direction
-- Configurable height and forward offset sliders for surface and underwater swimming
 - Auto-restore first person after going through doors / map transitions
+- Fixed camera being low when using Talon Trot on steep hills
 
 ### 0.4.0
 
@@ -34,6 +32,7 @@ A mod for Banjo-Kazooie Recompiled that adds a toggled first-person camera with 
 - **D-pad Up**: Toggle first-person mode on/off
 - **C-buttons / Right stick**: Look around
 - **Left stick**: Move
+- **Mouse look**: Tested on Linux. Needs testing on Windows
 
 ### Camera Modes
 
